@@ -1,0 +1,201 @@
+---
+title: "OpenAPI 3.1 support"
+description: "Enable OpenAPI 3.1 output in Swagger Core, understand what changes between 3.0 and 3.1, and use 3.1-only annotations such as @Webhook."
+---
+
+Swagger Core has supported OpenAPI 3.1 since version 2.2.0. OpenAPI 3.1 aligns fully with JSON Schema 2020-12, adds webhooks as a first-class construct, and introduces several new fields in the `Info` and `License` objects.
+
+## What is different in OpenAPI 3.1
+
+<CardGroup cols={2}>
+  <Card title="Full JSON Schema alignment">
+    OpenAPI 3.1 schemas are valid JSON Schema 2020-12 documents. The `exclusiveMinimum` and `exclusiveMaximum` fields change from booleans to numbers, and `type` may be an array (e.g. `["string", "null"]` instead of using `nullable: true`).
+  </Card>
+  <Card title="Webhooks">
+    The `webhooks` field at the top level of an OpenAPI document carries outbound API notifications that consumers can subscribe to. In Swagger Core these are declared with `@Webhook` and `@Webhooks`.
+  </Card>
+  <Card title="Info.summary">
+    The `Info` object gains a `summary` field — a short, single-sentence description of the API intended for display in tool listings.
+  </Card>
+  <Card title="License.identifier">
+    The `License` object accepts an SPDX `identifier` field (e.g. `Apache-2.0`) as an alternative to the `url` field.
+  </Card>
+</CardGroup>
+
+### Schema representation differences
+
+| Concept | OpenAPI 3.0 | OpenAPI 3.1 |
+|---|---|---|
+| Nullable field | `nullable: true` + `type: string` | `type: ["string", "null"]` |
+| Exclusive bounds | `exclusiveMinimum: true` (boolean) | `exclusiveMinimum: 5` (number) |
+| Schema dialect | OAS Schema Object (subset of JSON Schema Draft 7) | JSON Schema 2020-12 |
+| Webhooks | Not supported | `webhooks` map at root level |
+
+<Note>
+Swagger Core's model classes carry `@OpenAPI30` and `@OpenAPI31` annotations on fields that are exclusive to one version. When serialising, the active `ObjectMapper` (either `Json.mapper()` for 3.0 or `Json31.mapper()` for 3.1) suppresses fields that do not apply to the target version.
+</Note>
+
+## Enabling OpenAPI 3.1 output
+
+<Tabs>
+  <Tab title="SwaggerConfiguration">
+    Set `openAPI31` to `true` on your `SwaggerConfiguration`. This switches the underlying `ObjectMapper` to `Json31.mapper()`, which serialises schemas according to the 3.1 rules.
+
+    ```java
+    import io.swagger.v3.oas.integration.SwaggerConfiguration;
+    import io.swagger.v3.oas.models.OpenAPI;
+    import io.swagger.v3.oas.models.info.Info;
+
+    SwaggerConfiguration config = new SwaggerConfiguration()
+        .openAPI31(true)
+        .openAPI(new OpenAPI()
+            .info(new Info()
+                .title("My API")
+                .version("1.0.0")));
+    ```
+  </Tab>
+  <Tab title="Maven plugin">
+    Add `<openAPI31>true</openAPI31>` inside the plugin `<configuration>` block:
+
+    ```xml
+    <plugin>
+      <groupId>io.swagger.core.v3</groupId>
+      <artifactId>swagger-maven-plugin</artifactId>
+      <version>2.2.46</version>
+      <configuration>
+        <outputFileName>openapi</outputFileName>
+        <outputPath>${project.build.directory}</outputPath>
+        <outputFormat>JSON</outputFormat>
+        <openAPI31>true</openAPI31>
+        <resourcePackages>
+          <package>com.example.api</package>
+        </resourcePackages>
+      </configuration>
+      <executions>
+        <execution>
+          <phase>compile</phase>
+          <goals><goal>resolve</goal></goals>
+        </execution>
+      </executions>
+    </plugin>
+    ```
+  </Tab>
+</Tabs>
+
+## Migrating an existing 3.0 spec: convertToOpenAPI31
+
+`convertToOpenAPI31` tells Swagger Core to take an existing OpenAPI 3.0 definition supplied via `SwaggerConfiguration.openAPI()` and convert it to 3.1 format before serving it. Setting this flag also implicitly sets `openAPI31 = true`.
+
+```java
+SwaggerConfiguration config = new SwaggerConfiguration()
+    .convertToOpenAPI31(true)
+    .openAPI(existingOpenAPI30Spec);
+```
+
+<Warning>
+`convertToOpenAPI31` performs a best-effort conversion. Review the output for any fields that have no direct 3.1 equivalent (for example, `nullable: true` is translated to a type array, but vendor extensions on removed fields are not carried over).
+</Warning>
+
+## The @OpenAPI31 annotation
+
+`io.swagger.v3.oas.annotations.OpenAPI31` is a meta-annotation used to mark other annotations or methods that are only meaningful in OpenAPI 3.1 context:
+
+```java
+@Target({METHOD, ANNOTATION_TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Inherited
+public @interface OpenAPI31 {}
+```
+
+It is placed on annotations such as `@Webhook` and `@Webhooks` to signal that they have no effect when the document is generated in 3.0 mode. You can also use it on your own custom annotations to document that they require 3.1.
+
+## Webhook support
+
+Webhooks describe HTTP callbacks that your API sends to subscribers. Swagger Core provides two annotations for declaring them.
+
+### @Webhook
+
+Annotate a method to declare it as a webhook endpoint. The method is not a real JAX-RS resource — it exists solely to carry the annotation metadata.
+
+```java
+@Target({METHOD, ANNOTATION_TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Inherited
+@OpenAPI31
+public @interface Webhook {
+    String name();
+    Operation operation();
+}
+```
+
+### @Webhooks
+
+Container annotation that holds multiple `@Webhook` declarations. Apply it to a class that serves as the webhook registry for your API.
+
+```java
+@Target({TYPE, ANNOTATION_TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Inherited
+@OpenAPI31
+public @interface Webhooks {
+    Webhook[] value() default {};
+}
+```
+
+### Declaring a webhook
+
+```java
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Webhook;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.parameters.RequestBody;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+
+@Webhook(
+    name = "orderShipped",
+    operation = @Operation(
+        summary = "Notify subscriber when an order is shipped",
+        requestBody = @RequestBody(
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ShipmentEvent.class)
+            )
+        ),
+        responses = {
+            @ApiResponse(responseCode = "200", description = "Subscriber acknowledged the event")
+        }
+    )
+)
+public void orderShippedWebhook() {
+    // intentionally empty — this method exists only for the annotation
+}
+```
+
+## Schema resolution options
+
+`Schema.SchemaResolution` controls how Swagger Core renders inherited and composed schemas. It affects the `allOf` expansion behaviour and is particularly relevant in 3.1 mode where JSON Schema composition rules are stricter.
+
+| Value | Behaviour |
+|---|---|
+| `DEFAULT` | Standard behaviour: uses `allOf` for subtype composition when needed |
+| `INLINE` | Inline all properties without generating `$ref` references |
+| `ALL_OF` | Always wrap schema composition in `allOf` |
+| `ALL_OF_REF` | Always wrap in `allOf` and use `$ref` for each component |
+
+Configure schema resolution together with the 3.1 flag:
+
+```java
+import io.swagger.v3.oas.models.media.Schema;
+
+SwaggerConfiguration config = new SwaggerConfiguration()
+    .openAPI31(true)
+    .schemaResolution(Schema.SchemaResolution.ALL_OF_REF);
+```
+
+Or control it at runtime via the system property `schema-resolution` / environment variable `SCHEMA_RESOLUTION`, combined with the `apply-schema-resolution` flag:
+
+```bash
+# Enable schema resolution and set the strategy
+-Dapply-schema-resolution=true -Dschema-resolution=all-of-ref
+```

@@ -1,0 +1,479 @@
+---
+title: "@Schema"
+description: "Defines or augments an OpenAPI schema for a model class, field, method parameter, or response body."
+---
+
+`io.swagger.v3.oas.annotations.media.Schema`
+
+Apply `@Schema` to a class, field, method, or parameter to supply or override the OpenAPI schema that swagger-core generates for that element. When `implementation` is set, it replaces the element's inferred type entirely; all other elements then augment the resolved class.
+
+<Note>
+  For array-typed elements, use `@ArraySchema` instead. The two annotations cannot coexist on the same target.
+</Note>
+
+## Elements
+
+### Type and structure
+
+<ParamField path="implementation" type="Class<?>" default="Void.class">
+  A Java class to use as the schema implementation. When provided, swagger-core introspects this class and then merges any additional `@Schema` elements on top of the result.
+</ParamField>
+
+<ParamField path="name" type="string" default='""'>
+  Overrides the schema or property name used in the generated OpenAPI document.
+</ParamField>
+
+<ParamField path="title" type="string" default='""'>
+  A short, human-readable title for the schema.
+</ParamField>
+
+<ParamField path="description" type="string" default='""'>
+  A description of the schema or property. Supports CommonMark markdown.
+</ParamField>
+
+<ParamField path="type" type="string" default='""'>
+  Overrides the inferred JSON Schema primitive type (e.g. `"string"`, `"integer"`, `"number"`, `"boolean"`, `"object"`, `"array"`).
+</ParamField>
+
+<ParamField path="format" type="string" default='""'>
+  An optional format hint (e.g. `"int32"`, `"int64"`, `"float"`, `"double"`, `"date"`, `"date-time"`, `"email"`, `"uuid"`). Consumers that do not recognise the format fall back to the base `type`.
+</ParamField>
+
+<ParamField path="types" type="String[]" default="{}">
+  OpenAPI 3.1 multi-type array (e.g. `{"string", "null"}`). Takes precedence over `type` when the document is rendered in OAS 3.1 mode.
+
+  _Requires OpenAPI 3.1._
+</ParamField>
+
+### Default and enumeration
+
+<ParamField path="defaultValue" type="string" default='"##default"'>
+  The default value for this schema property. The sentinel `"##default"` means no default is emitted. Supply any other string to set an explicit default.
+</ParamField>
+
+<ParamField path="allowableValues" type="String[]" default="{}">
+  A finite list of allowable values. Maps to the `enum` keyword in the generated schema.
+</ParamField>
+
+<ParamField path="enumAsRef" type="boolean" default="false">
+  When `true`, the enum type is emitted as a `$ref` to a named schema in `components/schemas` rather than inlined.
+
+  _Added in swagger-annotations 2.1.0._
+</ParamField>
+
+### Numeric constraints
+
+<ParamField path="minimum" type="string" default='""'>
+  The inclusive minimum numeric value. Ignored when the value is an empty string or not a number.
+</ParamField>
+
+<ParamField path="exclusiveMinimum" type="boolean" default="false">
+  When `true`, the minimum is exclusive (greater-than rather than greater-than-or-equal).
+</ParamField>
+
+<ParamField path="exclusiveMinimumValue" type="int" default="0">
+  OpenAPI 3.1 exclusive minimum expressed as a numeric value. Ignored when `0`.
+
+  _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="maximum" type="string" default='""'>
+  The inclusive maximum numeric value. Ignored when the value is an empty string or not a number.
+</ParamField>
+
+<ParamField path="exclusiveMaximum" type="boolean" default="false">
+  When `true`, the maximum is exclusive (less-than rather than less-than-or-equal).
+</ParamField>
+
+<ParamField path="exclusiveMaximumValue" type="int" default="0">
+  OpenAPI 3.1 exclusive maximum expressed as a numeric value. Ignored when `0`.
+
+  _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="multipleOf" type="double" default="0">
+  The value must be divisible by this number with no remainder. Ignored when `0`.
+</ParamField>
+
+### String constraints
+
+<ParamField path="minLength" type="int" default="0">
+  The minimum length of a string value. Ignored when negative.
+</ParamField>
+
+<ParamField path="maxLength" type="int" default="Integer.MAX_VALUE">
+  The maximum length of a string value. Ignored when negative.
+</ParamField>
+
+<ParamField path="pattern" type="string" default='""'>
+  A regular expression pattern the string value must match. Ignored when empty.
+</ParamField>
+
+### Object constraints
+
+<ParamField path="minProperties" type="int" default="0">
+  The minimum number of properties allowed when `additionalProperties` is defined. Ignored when `0`.
+</ParamField>
+
+<ParamField path="maxProperties" type="int" default="0">
+  The maximum number of properties allowed when `additionalProperties` is defined. Ignored when `0`.
+</ParamField>
+
+<ParamField path="requiredProperties" type="String[]" default="{}">
+  Names of properties within this object schema that are required.
+</ParamField>
+
+### Access mode and visibility
+
+<ParamField path="accessMode" type="Schema.AccessMode" default="AccessMode.AUTO">
+  Controls read/write access to the property:
+
+  | Value        | Behavior                                              |
+  |--------------|-------------------------------------------------------|
+  | `AUTO`       | Access mode inferred from context.                    |
+  | `READ_ONLY`  | Property is returned in responses but not accepted in requests. |
+  | `WRITE_ONLY` | Property is accepted in requests but not returned in responses. |
+  | `READ_WRITE` | Property is both accepted in requests and returned in responses. |
+</ParamField>
+
+<ParamField path="hidden" type="boolean" default="false">
+  When `true`, this schema or property is excluded from the generated OpenAPI document.
+</ParamField>
+
+<ParamField path="deprecated" type="boolean" default="false">
+  Marks the schema or property as deprecated.
+</ParamField>
+
+<ParamField path="nullable" type="boolean" default="false">
+  When `true`, the value may be `null` in addition to the declared type.
+</ParamField>
+
+### Required mode
+
+<ParamField path="requiredMode" type="Schema.RequiredMode" default="RequiredMode.AUTO">
+  Controls how the library determines whether this property is required:
+
+  | Value          | Behavior                                                                         |
+  |----------------|----------------------------------------------------------------------------------|
+  | `AUTO`         | Required if annotated with `@NotNull`, `@NonNull`, etc.; not required for `Optional`; otherwise not required. |
+  | `REQUIRED`     | Always treated as required, regardless of other annotations.                    |
+  | `NOT_REQUIRED` | Always treated as not required, regardless of other annotations.                |
+
+  _Added in swagger-annotations 2.2.5. Replaces the deprecated `required` boolean._
+</ParamField>
+
+### Composition and polymorphism
+
+<ParamField path="not" type="Class<?>" default="Void.class">
+  A class whose resolved schema is used as the `not` constraint — values must not validate against this schema.
+</ParamField>
+
+<ParamField path="oneOf" type="Class<?>[]" default="{}">
+  An array of classes whose resolved schemas form the `oneOf` array. Exactly one must match for the value to be valid.
+</ParamField>
+
+<ParamField path="anyOf" type="Class<?>[]" default="{}">
+  An array of classes whose resolved schemas form the `anyOf` array. At least one must match.
+</ParamField>
+
+<ParamField path="allOf" type="Class<?>[]" default="{}">
+  An array of classes whose resolved schemas form the `allOf` array. All must match.
+</ParamField>
+
+<ParamField path="discriminatorProperty" type="string" default='""'>
+  The name of the property that acts as the discriminator for polymorphic schemas.
+</ParamField>
+
+<ParamField path="discriminatorMapping" type="DiscriminatorMapping[]" default="{}">
+  An array of `@DiscriminatorMapping` annotations mapping discriminator values to specific schema classes.
+</ParamField>
+
+<ParamField path="subTypes" type="Class<?>[]" default="{}">
+  Sub-types that inherit from this model. The reader adds them as child schemas linked via the discriminator.
+</ParamField>
+
+### Documentation and examples
+
+<ParamField path="example" type="string" default='""'>
+  A single inline example value. When associated with a media type, the string is parsed as an object or array.
+</ParamField>
+
+<ParamField path="examples" type="String[]" default="{}">
+  Multiple inline example values.
+
+  _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="exampleClasses" type="Class<?>[]" default="{}">
+  Classes whose instances serve as examples. The classes are serialized to produce example JSON.
+</ParamField>
+
+<ParamField path="externalDocs" type="ExternalDocumentation" default="@ExternalDocumentation()">
+  A link to external documentation for this schema.
+</ParamField>
+
+### Schema references and extensions
+
+<ParamField path="ref" type="string" default='""'>
+  A `$ref` pointer to a schema defined in `components/schemas` or an external document. When set, the annotated element is emitted as a reference only.
+</ParamField>
+
+<ParamField path="extensions" type="Extension[]" default="{}">
+  Specification extensions (`x-*` fields) to add to this schema object.
+</ParamField>
+
+### Additional properties
+
+<ParamField path="additionalProperties" type="Schema.AdditionalPropertiesValue" default="AdditionalPropertiesValue.USE_ADDITIONAL_PROPERTIES_ANNOTATION">
+  Controls the `additionalProperties` keyword:
+
+  | Value                                | Behavior                                                          |
+  |--------------------------------------|-------------------------------------------------------------------|
+  | `TRUE`                               | `additionalProperties: true`                                      |
+  | `FALSE`                              | `additionalProperties: false`                                     |
+  | `USE_ADDITIONAL_PROPERTIES_ANNOTATION` | Resolved from `@Content.additionalPropertiesSchema` or `@Schema.additionalPropertiesSchema`. |
+</ParamField>
+
+<ParamField path="additionalPropertiesSchema" type="Class<?>" default="Void.class">
+  A class whose resolved schema is used as the `additionalProperties` schema.
+</ParamField>
+
+### Schema resolution mode
+
+<ParamField path="schemaResolution" type="Schema.SchemaResolution" default="SchemaResolution.AUTO">
+  Controls how object schemas are bundled in the output document:
+
+  | Value        | Behavior                                                                                    |
+  |--------------|---------------------------------------------------------------------------------------------|
+  | `AUTO`       | Uses the global configuration default.                                                      |
+  | `DEFAULT`    | Schema is bundled in `components/schemas`; referenced with `$ref` (no siblings).            |
+  | `INLINE`     | Schema is inlined at every usage; no `$ref` generated.                                      |
+  | `ALL_OF`     | Schema is in `components/schemas`; context annotation properties are merged via `allOf`.    |
+  | `ALL_OF_REF` | Schema is in `components/schemas`; `$ref` inside `allOf`; context properties at root level. |
+</ParamField>
+
+### OpenAPI 3.1 keywords
+
+<ParamField path="prefixItems" type="Class<?>[]" default="{}">
+  Schemas for positional tuple items, evaluated before the general `items` schema.
+</ParamField>
+
+<ParamField path="contains" type="Class<?>" default="Void.class">
+  A schema that at least one array item must match. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="minContains" type="int" default="0">
+  Minimum number of array items that must match `contains`. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="maxContains" type="int" default="Integer.MAX_VALUE">
+  Maximum number of array items that may match `contains`. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="$id" type="string" default='""'>
+  The JSON Schema `$id` for this schema. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="$schema" type="string" default='""'>
+  The JSON Schema dialect URI. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="$anchor" type="string" default='""'>
+  The JSON Schema `$anchor` for this schema. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="$vocabulary" type="string" default='""'>
+  The JSON Schema `$vocabulary` URI. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="$dynamicAnchor" type="string" default='""'>
+  The JSON Schema `$dynamicAnchor` for this schema. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="$dynamicRef" type="string" default='""'>
+  The JSON Schema `$dynamicRef` for this schema. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="$comment" type="string" default='""'>
+  An informational comment for schema authors. Not rendered to consumers. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="_if" type="Class<?>" default="Void.class">
+  The `if` conditional sub-schema. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="_else" type="Class<?>" default="Void.class">
+  The `else` sub-schema applied when `_if` does not match. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="then" type="Class<?>" default="Void.class">
+  The `then` sub-schema applied when `_if` matches. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="_const" type="string" default='""'>
+  Restricts the value to exactly this constant. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="contentEncoding" type="string" default='""'>
+  The encoding (e.g. `"base64"`) for string content. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="contentMediaType" type="string" default='""'>
+  The media type (e.g. `"application/json"`) of the string content. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="contentSchema" type="Class<?>" default="Void.class">
+  The schema that validates the decoded string content. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="propertyNames" type="Class<?>" default="Void.class">
+  A schema that all property names must match. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="unevaluatedItems" type="Class<?>" default="Void.class">
+  Schema applied to array items not covered by `prefixItems` or `contains`. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="unevaluatedProperties" type="Class<?>" default="Void.class">
+  Schema applied to properties not covered by other keywords. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="additionalItems" type="Class<?>" default="Void.class">
+  Schema for additional array items beyond those defined in `prefixItems`.
+</ParamField>
+
+<ParamField path="dependentRequiredMap" type="DependentRequired[]" default="{}">
+  Declares properties that become required when a named property is present. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="dependentSchemas" type="StringToClassMapItem[]" default="{}">
+  Schemas that apply when a named property is present. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="patternProperties" type="StringToClassMapItem[]" default="{}">
+  Schemas keyed by regex patterns that apply to matching property names. _Requires OpenAPI 3.1._
+</ParamField>
+
+<ParamField path="properties" type="StringToClassMapItem[]" default="{}">
+  Explicit property schemas defined inline on the schema annotation.
+</ParamField>
+
+## Usage examples
+
+### Class-level and field-level annotations
+
+```java
+import io.swagger.v3.oas.annotations.media.Schema;
+
+@Schema(
+    description = "Represents a pet in the store",
+    title       = "Pet",
+    example     = """
+        {"id": 42, "name": "Fido", "status": "available"}
+        """
+)
+public class Pet {
+
+    @Schema(
+        description  = "Unique identifier",
+        accessMode   = Schema.AccessMode.READ_ONLY,
+        example      = "42"
+    )
+    private long id;
+
+    @Schema(
+        description    = "Display name of the pet",
+        minLength      = 1,
+        maxLength      = 100,
+        example        = "Fido"
+    )
+    private String name;
+
+    @Schema(
+        description     = "Current lifecycle status",
+        allowableValues = { "available", "pending", "sold" },
+        defaultValue    = "available"
+    )
+    private String status;
+
+    @Schema(
+        description = "Internal audit timestamp; not returned to clients",
+        hidden      = true
+    )
+    private Instant createdAt;
+
+    // getters and setters omitted
+}
+```
+
+### Polymorphism with a discriminator
+
+```java
+import io.swagger.v3.oas.annotations.media.DiscriminatorMapping;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+@Schema(
+    description          = "A generic animal",
+    discriminatorProperty = "type",
+    discriminatorMapping = {
+        @DiscriminatorMapping(value = "cat",  schema = Cat.class),
+        @DiscriminatorMapping(value = "dog",  schema = Dog.class)
+    },
+    subTypes = { Cat.class, Dog.class }
+)
+public abstract class Animal {
+
+    @Schema(description = "Discriminator field", allowableValues = { "cat", "dog" })
+    private String type;
+
+    @Schema(description = "Animal name")
+    private String name;
+
+    // getters and setters omitted
+}
+
+@Schema(description = "A cat")
+public class Cat extends Animal {
+
+    @Schema(description = "Whether the cat is indoor-only")
+    private boolean indoor;
+}
+
+@Schema(description = "A dog")
+public class Dog extends Animal {
+
+    @Schema(description = "Breed of the dog", example = "Labrador")
+    private String breed;
+}
+```
+
+### Composition with `allOf`
+
+```java
+@Schema(
+    description = "An auditable pet with creation metadata",
+    allOf       = { Pet.class, AuditFields.class }
+)
+public class AuditablePet {
+    // no additional fields — the schema is entirely composed from allOf
+}
+```
+
+### Overriding the schema on a parameter
+
+```java
+@POST
+@Path("/pets")
+@Operation(summary = "Create a pet")
+public Response createPet(
+    @RequestBody(
+        content = @Content(
+            mediaType = MediaType.APPLICATION_JSON,
+            schema    = @Schema(implementation = Pet.class)
+        )
+    )
+    Pet pet
+) {
+    return Response.status(201).entity(petService.create(pet)).build();
+}
+```

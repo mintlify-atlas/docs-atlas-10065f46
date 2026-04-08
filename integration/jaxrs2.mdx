@@ -1,0 +1,235 @@
+---
+title: "JAX-RS 2 integration"
+description: "Integrate Swagger Core with JAX-RS 2 runtimes including Jersey, RESTEasy, and Apache CXF to serve an OpenAPI spec from your application."
+---
+
+Swagger Core ships a first-class JAX-RS 2 integration module (`swagger-jaxrs2`) that scans your resources and produces an OpenAPI document at runtime. The two primary extension points are:
+
+- **`OpenApiResource`** — serves the spec at a path-based endpoint (`/openapi.json` or `/openapi.yaml`)
+- **`AcceptHeaderOpenApiResource`** — serves the spec at `/openapi`, selecting the format via the `Accept` header
+
+## Maven dependency
+
+```xml pom.xml
+<dependency>
+    <groupId>io.swagger.core.v3</groupId>
+    <artifactId>swagger-jaxrs2</artifactId>
+    <version>2.2.x</version>
+</dependency>
+```
+
+## Registering the resource
+
+<Steps>
+  <Step title="Create or update your Application class">
+    Add `OpenApiResource` (or `AcceptHeaderOpenApiResource`) to the set of JAX-RS classes returned by `getClasses()`.
+
+    ```java MyApplication.java
+    import io.swagger.v3.jaxrs2.integration.resources.OpenApiResource;
+    import io.swagger.v3.oas.annotations.OpenAPIDefinition;
+    import io.swagger.v3.oas.annotations.info.Info;
+
+    import javax.ws.rs.ApplicationPath;
+    import javax.ws.rs.core.Application;
+    import java.util.HashSet;
+    import java.util.Set;
+
+    @ApplicationPath("/api")
+    @OpenAPIDefinition(info = @Info(title = "My API", version = "1.0"))
+    public class MyApplication extends Application {
+
+        @Override
+        public Set<Class<?>> getClasses() {
+            Set<Class<?>> classes = new HashSet<>();
+            // your own resources
+            classes.add(PetResource.class);
+            classes.add(UserResource.class);
+            // Swagger Core endpoint
+            classes.add(OpenApiResource.class);
+            return classes;
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Verify the endpoints">
+    Once the application starts, the following endpoints are available:
+
+    | URL | Format |
+    |-----|--------|
+    | `GET /api/openapi.json` | JSON |
+    | `GET /api/openapi.yaml` | YAML |
+  </Step>
+</Steps>
+
+## Path-based vs. content-negotiation resource
+
+<Tabs>
+  <Tab title="OpenApiResource (path-based)">
+    `OpenApiResource` is annotated with `@Path("/openapi.{type:json|yaml}")`. The format is determined by the path segment.
+
+    ```java
+    @Path("/openapi.{type:json|yaml}")
+    public class OpenApiResource extends BaseOpenApiResource {
+
+        @GET
+        @Produces({MediaType.APPLICATION_JSON, "application/yaml"})
+        @Operation(hidden = true)
+        public Response getOpenApi(@Context HttpHeaders headers,
+                                   @Context UriInfo uriInfo,
+                                   @PathParam("type") String type) throws Exception {
+            return super.getOpenApi(headers, config, app, uriInfo, type);
+        }
+    }
+    ```
+
+    Register `OpenApiResource` when you want distinct, bookmarkable URLs for each format.
+  </Tab>
+  <Tab title="AcceptHeaderOpenApiResource (content-negotiation)">
+    `AcceptHeaderOpenApiResource` is annotated with `@Path("/openapi")` and exposes two `@GET` methods — one `@Produces(APPLICATION_JSON)` and one `@Produces("application/yaml")`. The JAX-RS runtime selects the method based on the client's `Accept` header.
+
+    ```java
+    @Path("/openapi")
+    public class AcceptHeaderOpenApiResource extends BaseOpenApiResource {
+
+        @GET
+        @Produces({MediaType.APPLICATION_JSON})
+        @Operation(hidden = true)
+        public Response getOpenApiJson(@Context HttpHeaders headers,
+                                       @Context UriInfo uriInfo) throws Exception {
+            return super.getOpenApi(headers, config, app, uriInfo, "json");
+        }
+
+        @GET
+        @Produces({"application/yaml"})
+        @Operation(hidden = true)
+        public Response getOpenApiYaml(@Context HttpHeaders headers,
+                                        @Context UriInfo uriInfo) throws Exception {
+            return super.getOpenApi(headers, config, app, uriInfo, "yaml");
+        }
+    }
+    ```
+
+    Register `AcceptHeaderOpenApiResource` instead of `OpenApiResource` when clients should use `Accept: application/json` or `Accept: application/yaml`.
+  </Tab>
+</Tabs>
+
+## Programmatic configuration with JaxrsOpenApiContextBuilder
+
+For full control over scanning and configuration, build the `OpenApiContext` explicitly — typically in a `ServletContextListener` or during application startup.
+
+```java AppBootstrap.java
+import io.swagger.v3.jaxrs2.integration.JaxrsOpenApiContextBuilder;
+import io.swagger.v3.oas.integration.OpenApiConfigurationException;
+import io.swagger.v3.oas.integration.SwaggerConfiguration;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Info;
+
+import java.util.LinkedHashSet;
+import java.util.Set;
+
+public class AppBootstrap {
+
+    public void init() throws OpenApiConfigurationException {
+        OpenAPI openAPI = new OpenAPI()
+                .info(new Info()
+                        .title("Pet Store API")
+                        .version("1.0.0"));
+
+        Set<String> resourcePackages = new LinkedHashSet<>();
+        resourcePackages.add("com.example.resources");
+
+        SwaggerConfiguration oasConfig = new SwaggerConfiguration()
+                .openAPI(openAPI)
+                .prettyPrint(true)
+                .resourcePackages(resourcePackages);
+
+        new JaxrsOpenApiContextBuilder()
+                .openApiConfiguration(oasConfig)
+                .buildContext(true);
+    }
+}
+```
+
+`JaxrsOpenApiContextBuilder` creates an `XmlWebOpenApiContext` internally. Calling `buildContext(true)` initialises the context and registers it with `OpenApiContextLocator` so that `OpenApiResource` can retrieve it.
+
+<Note>
+If a context with the same ID already exists in `OpenApiContextLocator`, `buildContext` returns the existing instance without re-initialising it.
+</Note>
+
+## Runtime-specific notes
+
+<Tabs>
+  <Tab title="Jersey">
+    Register the resource via `getClasses()` in your `Application` subclass as shown above, or add the `io.swagger.v3.jaxrs2.integration.resources` package to `jersey.config.server.provider.packages` in your `web.xml`:
+
+    ```xml web.xml
+    <init-param>
+        <param-name>jersey.config.server.provider.packages</param-name>
+        <param-value>
+            io.swagger.v3.jaxrs2.integration.resources,com.example.resources
+        </param-value>
+    </init-param>
+    ```
+
+    Jersey scans the listed packages and auto-discovers `OpenApiResource`.
+  </Tab>
+  <Tab title="RESTEasy">
+    Add `OpenApiResource` to the `resteasy.resources` context param or register it in `web.xml` as a `<servlet>` class. Alternatively, list the class in your `Application.getClasses()` — RESTEasy honours the standard JAX-RS mechanism.
+
+    ```xml web.xml
+    <context-param>
+        <param-name>resteasy.resources</param-name>
+        <param-value>io.swagger.v3.jaxrs2.integration.resources.OpenApiResource</param-value>
+    </context-param>
+    ```
+  </Tab>
+  <Tab title="Apache CXF">
+    Declare `OpenApiResource` as a JAX-RS service bean in your CXF configuration or list it in `Application.getClasses()`. CXF processes the standard `Application` class without any additional framework-specific steps.
+  </Tab>
+</Tabs>
+
+## ReaderListener: post-processing the spec
+
+Implement `ReaderListener` on any class that will be picked up by the scanner. The scanner instantiates implementations via `newInstance()` and invokes them before and after reading annotations.
+
+```java MyReaderListener.java
+import io.swagger.v3.jaxrs2.ReaderListener;
+import io.swagger.v3.oas.integration.api.OpenApiReader;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Contact;
+
+public class MyReaderListener implements ReaderListener {
+
+    /**
+     * Called before the OpenAPI definition gets populated from scanned classes.
+     * Use this to pre-populate or override initial OpenAPI fields.
+     */
+    @Override
+    public void beforeScan(OpenApiReader reader, OpenAPI openAPI) {
+        openAPI.getInfo().setContact(new Contact().email("team@example.com"));
+    }
+
+    /**
+     * Called after the OpenAPI definition has been populated from scanned classes.
+     * Use this to post-process or augment the generated definition.
+     */
+    @Override
+    public void afterScan(OpenApiReader reader, OpenAPI openAPI) {
+        // remove any operation that has no tags
+        if (openAPI.getPaths() != null) {
+            openAPI.getPaths().forEach((path, item) ->
+                    item.readOperations().forEach(op -> {
+                        if (op.getTags() == null || op.getTags().isEmpty()) {
+                            op.addTagsItem("default");
+                        }
+                    })
+            );
+        }
+    }
+}
+```
+
+<Tip>
+`ReaderListener` implementations must be discoverable by the scanner — place them in one of the packages listed in `resourcePackages`, or register them explicitly via `resourceClasses`.
+</Tip>

@@ -1,0 +1,263 @@
+---
+title: "Installation"
+description: "Maven and Gradle dependency coordinates for all Swagger Core modules, including Jakarta namespace variants."
+---
+
+All Swagger Core modules are published to Maven Central under the `io.swagger.core.v3` groupId. The current stable version is **2.2.46**.
+
+<Tip>
+  Declare a property for the version so all modules stay in sync:
+
+  ```xml pom.xml
+  <properties>
+      <swagger-core.version>2.2.46</swagger-core.version>
+  </properties>
+  ```
+</Tip>
+
+## Modules
+
+### swagger-annotations
+
+Provides the OpenAPI annotations (`@Operation`, `@Schema`, `@Parameter`, `@ApiResponse`, etc.). This is the only module most application code needs to compile against directly.
+
+<CodeGroup>
+
+```xml pom.xml
+<dependency>
+    <groupId>io.swagger.core.v3</groupId>
+    <artifactId>swagger-annotations</artifactId>
+    <version>2.2.46</version>
+</dependency>
+```
+
+```groovy build.gradle
+implementation 'io.swagger.core.v3:swagger-annotations:2.2.46'
+```
+
+</CodeGroup>
+
+---
+
+### swagger-models
+
+Java model classes that represent the OpenAPI object graph (e.g. `OpenAPI`, `PathItem`, `Schema`). Pulled in transitively by most other modules.
+
+<CodeGroup>
+
+```xml pom.xml
+<dependency>
+    <groupId>io.swagger.core.v3</groupId>
+    <artifactId>swagger-models</artifactId>
+    <version>2.2.46</version>
+</dependency>
+```
+
+```groovy build.gradle
+implementation 'io.swagger.core.v3:swagger-models:2.2.46'
+```
+
+</CodeGroup>
+
+---
+
+### swagger-core
+
+The core scanning and resolution engine. Contains `ModelConverter`, `OpenAPISpecFilter`, and related SPIs for customizing schema and spec generation.
+
+<CodeGroup>
+
+```xml pom.xml
+<dependency>
+    <groupId>io.swagger.core.v3</groupId>
+    <artifactId>swagger-core</artifactId>
+    <version>2.2.46</version>
+</dependency>
+```
+
+```groovy build.gradle
+implementation 'io.swagger.core.v3:swagger-core:2.2.46'
+```
+
+</CodeGroup>
+
+---
+
+### swagger-integration
+
+Framework-agnostic integration layer. Contains `OpenApiContext`, `SwaggerConfiguration`, and the `OpenApiContextLocator` used to configure and share the OpenAPI context across an application.
+
+<CodeGroup>
+
+```xml pom.xml
+<dependency>
+    <groupId>io.swagger.core.v3</groupId>
+    <artifactId>swagger-integration</artifactId>
+    <version>2.2.46</version>
+</dependency>
+```
+
+```groovy build.gradle
+implementation 'io.swagger.core.v3:swagger-integration:2.2.46'
+```
+
+</CodeGroup>
+
+---
+
+### swagger-jaxrs2
+
+JAX-RS 2.x reader and the `OpenApiResource` endpoint. This is the primary dependency for JAX-RS applications that want to serve a live OpenAPI document. Pulls in all other modules transitively.
+
+<CodeGroup>
+
+```xml pom.xml
+<dependency>
+    <groupId>io.swagger.core.v3</groupId>
+    <artifactId>swagger-jaxrs2</artifactId>
+    <version>2.2.46</version>
+</dependency>
+```
+
+```groovy build.gradle
+implementation 'io.swagger.core.v3:swagger-jaxrs2:2.2.46'
+```
+
+</CodeGroup>
+
+---
+
+### swagger-jaxrs2-servlet-initializer
+
+Servlet 3.x initializer that auto-registers the `OpenApiResource` endpoint without requiring an explicit `Application` class. Use this with Servlet 3.x containers (Tomcat 8/9, Jetty 9, etc.).
+
+<CodeGroup>
+
+```xml pom.xml
+<dependency>
+    <groupId>io.swagger.core.v3</groupId>
+    <artifactId>swagger-jaxrs2-servlet-initializer</artifactId>
+    <version>2.2.46</version>
+</dependency>
+```
+
+```groovy build.gradle
+implementation 'io.swagger.core.v3:swagger-jaxrs2-servlet-initializer:2.2.46'
+```
+
+</CodeGroup>
+
+---
+
+### swagger-jaxrs2-servlet-initializer-v2
+
+Alternative servlet initializer using the Servlet 3.1+ `ServletContainerInitializer` contract. Prefer this for Servlet 4.x containers.
+
+<CodeGroup>
+
+```xml pom.xml
+<dependency>
+    <groupId>io.swagger.core.v3</groupId>
+    <artifactId>swagger-jaxrs2-servlet-initializer-v2</artifactId>
+    <version>2.2.46</version>
+</dependency>
+```
+
+```groovy build.gradle
+implementation 'io.swagger.core.v3:swagger-jaxrs2-servlet-initializer-v2:2.2.46'
+```
+
+</CodeGroup>
+
+---
+
+### swagger-maven-plugin
+
+Maven plugin that generates the OpenAPI spec as part of your build, writing it to a file instead of (or in addition to) serving it at runtime.
+
+```xml pom.xml
+<plugin>
+    <groupId>io.swagger.core.v3</groupId>
+    <artifactId>swagger-maven-plugin</artifactId>
+    <version>2.2.46</version>
+    <configuration>
+        <outputFileName>openapi</outputFileName>
+        <outputFormat>JSONANDYAML</outputFormat>
+        <resourcePackages>
+            <package>com.example.resources</package>
+        </resourcePackages>
+        <outputPath>${project.build.directory}</outputPath>
+    </configuration>
+    <executions>
+        <execution>
+            <phase>compile</phase>
+            <goals>
+                <goal>resolve</goal>
+            </goals>
+        </execution>
+    </executions>
+</plugin>
+```
+
+---
+
+## Jakarta namespace variants
+
+Since version 2.1.7, every module above ships a parallel `-jakarta` artifact that uses the `jakarta.ws.rs` and `jakarta.servlet` namespaces. The artifact IDs follow the pattern `<module>-jakarta`.
+
+<Note>
+  Use the `-jakarta` variants when your runtime targets Jakarta EE 9 or later (e.g. Tomcat 10+, WildFly 27+, Payara 6+, GlassFish 7+). The `javax` and `jakarta` variants are functionally identical; only the namespace differs.
+</Note>
+
+<CodeGroup>
+
+```xml pom.xml (jakarta)
+<dependency>
+    <groupId>io.swagger.core.v3</groupId>
+    <artifactId>swagger-jaxrs2-jakarta</artifactId>
+    <version>2.2.46</version>
+</dependency>
+```
+
+```groovy build.gradle (jakarta)
+implementation 'io.swagger.core.v3:swagger-jaxrs2-jakarta:2.2.46'
+```
+
+</CodeGroup>
+
+The same `-jakarta` suffix applies to all other modules:
+
+| javax artifact | jakarta artifact |
+|---|---|
+| `swagger-annotations` | `swagger-annotations-jakarta` |
+| `swagger-models` | `swagger-models-jakarta` |
+| `swagger-core` | `swagger-core-jakarta` |
+| `swagger-integration` | `swagger-integration-jakarta` |
+| `swagger-jaxrs2` | `swagger-jaxrs2-jakarta` |
+| `swagger-jaxrs2-servlet-initializer` | `swagger-jaxrs2-servlet-initializer-jakarta` |
+| `swagger-jaxrs2-servlet-initializer-v2` | `swagger-jaxrs2-servlet-initializer-v2-jakarta` |
+| `swagger-maven-plugin` | `swagger-maven-plugin-jakarta` |
+
+## Maven BOM / version management
+
+To avoid repeating the version across multiple dependency declarations, you can import the project BOM (if available in your environment) or simply pin the version in a `<properties>` block and reference it with `${swagger-core.version}` throughout your `pom.xml`.
+
+```xml pom.xml
+<properties>
+    <swagger-core.version>2.2.46</swagger-core.version>
+</properties>
+
+<dependencies>
+    <dependency>
+        <groupId>io.swagger.core.v3</groupId>
+        <artifactId>swagger-jaxrs2</artifactId>
+        <version>${swagger-core.version}</version>
+    </dependency>
+    <dependency>
+        <groupId>io.swagger.core.v3</groupId>
+        <artifactId>swagger-annotations</artifactId>
+        <version>${swagger-core.version}</version>
+        <scope>provided</scope>
+    </dependency>
+</dependencies>
+```

@@ -1,0 +1,267 @@
+---
+title: "Custom model converters"
+description: "Extend Swagger Core's type resolution pipeline by implementing the ModelConverter SPI to produce custom OpenAPI Schema objects from Java types."
+---
+
+Swagger Core resolves Java types to OpenAPI `Schema` objects through a chain of `ModelConverter` implementations. You can insert your own converter into this chain to handle types that the default resolver does not cover, or to override the default schema representation for any type.
+
+## The ModelConverter interface
+
+Every custom converter implements `io.swagger.v3.core.converter.ModelConverter`:
+
+```java
+package io.swagger.v3.core.converter;
+
+import io.swagger.v3.oas.models.media.Schema;
+import java.util.Iterator;
+
+public interface ModelConverter {
+
+    /**
+     * Resolve the given type to an OpenAPI Schema.
+     *
+     * @param type    the annotated type to resolve
+     * @param context the current conversion context
+     * @param chain   the remaining converters to try if this one cannot handle the type
+     * @return a Schema, or null if this converter cannot handle the type
+     */
+    Schema resolve(AnnotatedType type, ModelConverterContext context, Iterator<ModelConverter> chain);
+
+    default boolean isOpenapi31() {
+        return false;
+    }
+}
+```
+
+<Note>
+Return `null` from `resolve()` to signal that your converter does not handle the given type. Swagger Core will then try the next converter in the chain. Never return `null` to indicate an empty schema — use an explicit empty `Schema` object instead.
+</Note>
+
+### The converter chain
+
+The third parameter, `Iterator<ModelConverter> chain`, represents the converters that follow yours in the pipeline. If your converter does not handle a particular type, delegate to the rest of the chain:
+
+```java
+if (chain.hasNext()) {
+    return chain.next().resolve(type, context, chain);
+}
+return null;
+```
+
+This pattern is also the default behaviour in `AbstractModelConverter.resolve()`, so subclassing `AbstractModelConverter` and calling `super.resolve()` achieves the same result automatically.
+
+## AnnotatedType
+
+`io.swagger.v3.core.converter.AnnotatedType` carries all the context a converter needs to produce a schema:
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `java.lang.reflect.Type` | The Java type being resolved |
+| `ctxAnnotations` | `Annotation[]` | Annotations present at the point of use (e.g. field annotations) |
+| `parent` | `Schema` | The parent schema when resolving a property |
+| `name` | `String` | An optional override name for the resolved schema |
+| `propertyName` | `String` | The property name when resolving a bean property (since 2.0.4) |
+| `schemaProperty` | `boolean` | `true` when resolving a property of a schema object |
+| `resolveAsRef` | `boolean` | Whether the result should be emitted as a `$ref` |
+| `resolveEnumAsRef` | `boolean` | Whether enum types should be resolved as `$ref` |
+| `skipOverride` | `boolean` | Skip any `@Schema(implementation=…)` override |
+| `skipSchemaName` | `boolean` | Do not add the schema name to the context definitions |
+| `skipJsonIdentity` | `boolean` | Ignore `@JsonIdentityInfo` on the type |
+| `jsonViewAnnotation` | `JsonView` | Active Jackson `@JsonView` filter |
+| `includePropertiesWithoutJSONView` | `boolean` | Include properties not covered by the active view (default `true`) |
+| `isSubtype` | `boolean` | `true` when the type is being resolved as a subtype |
+| `components` | `Components` | The current `Components` object for resolving `$ref` targets |
+
+`AnnotatedType` uses a fluent builder style — every setter returns `this`:
+
+```java
+AnnotatedType annotatedType = new AnnotatedType()
+    .type(MyClass.class)
+    .resolveAsRef(true)
+    .schemaProperty(true);
+```
+
+## ModelConverterContext
+
+`io.swagger.v3.core.converter.ModelConverterContext` is the shared state for a single resolution pass. Use it to register named schemas that can be referenced from other schemas, and to recursively resolve nested types.
+
+```java
+public interface ModelConverterContext {
+
+    /** Register a schema under a given name so it can be referenced as $ref. */
+    void defineModel(String name, Schema model);
+
+    /** Register a schema and associate it with an AnnotatedType. */
+    void defineModel(String name, Schema model, AnnotatedType type, String prevName);
+
+    /** Register a schema and associate it with a raw Type. */
+    void defineModel(String name, Schema model, Type type, String prevName);
+
+    /** Resolve a type through the full converter chain. */
+    Schema resolve(AnnotatedType type);
+
+    /** Return the map of all schemas defined so far in this pass. */
+    Map<String, Schema> getDefinedModels();
+
+    /** Return a fresh iterator over the converter chain. */
+    Iterator<ModelConverter> getConverters();
+}
+```
+
+Call `context.defineModel()` for any schema that should appear in the `components/schemas` section and be referenceable via `$ref`. Call `context.resolve()` to recursively resolve the types of nested properties.
+
+## AbstractModelConverter
+
+`io.swagger.v3.core.jackson.AbstractModelConverter` is a convenience base class that wires up a Jackson `ObjectMapper` and provides helpers for deriving schema names from Java types:
+
+```java
+public abstract class AbstractModelConverter implements ModelConverter {
+
+    protected final ObjectMapper _mapper;
+    protected final TypeNameResolver _typeNameResolver;
+
+    protected AbstractModelConverter(ObjectMapper mapper) { ... }
+    protected AbstractModelConverter(ObjectMapper mapper, TypeNameResolver typeNameResolver) { ... }
+
+    /** Delegates to the next converter in the chain by default. */
+    @Override
+    public Schema resolve(AnnotatedType type, ModelConverterContext context,
+                          Iterator<ModelConverter> chain) {
+        if (chain.hasNext()) {
+            return chain.next().resolve(type, context, chain);
+        }
+        return null;
+    }
+
+    protected String _typeName(JavaType type) { ... }
+    protected String _typeName(JavaType type, BeanDescription beanDesc) { ... }
+    protected String _typeQName(JavaType type) { ... }
+}
+```
+
+Extend `AbstractModelConverter` when you want access to the Jackson infrastructure without rebuilding it from scratch. Override only the `resolve()` method, and call `super.resolve()` for types your converter does not handle.
+
+## Complete example: LocalDate → string/date
+
+The following converter maps `java.time.LocalDate` to an OpenAPI schema with `type: string` and `format: date`, without registering it as a named component (it is inlined wherever used):
+
+```java
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.swagger.v3.core.converter.AnnotatedType;
+import io.swagger.v3.core.converter.ModelConverterContext;
+import io.swagger.v3.core.jackson.AbstractModelConverter;
+import io.swagger.v3.oas.models.media.Schema;
+
+import java.time.LocalDate;
+import java.util.Iterator;
+
+public class LocalDateConverter extends AbstractModelConverter {
+
+    public LocalDateConverter(ObjectMapper mapper) {
+        super(mapper);
+    }
+
+    @Override
+    public Schema resolve(AnnotatedType type,
+                          ModelConverterContext context,
+                          Iterator<ModelConverter> chain) {
+
+        if (type.getType() == LocalDate.class) {
+            return new Schema<>()
+                    .type("string")
+                    .format("date");
+        }
+
+        // Not our type — pass to the next converter
+        return super.resolve(type, context, chain);
+    }
+}
+```
+
+If you also want `LocalDate` to appear in `components/schemas` and be referenced by `$ref`, register it with the context and return a reference schema:
+
+```java
+@Override
+public Schema resolve(AnnotatedType type,
+                      ModelConverterContext context,
+                      Iterator<ModelConverter> chain) {
+
+    if (type.getType() == LocalDate.class) {
+        Schema<String> dateSchema = new Schema<String>()
+                .type("string")
+                .format("date");
+        context.defineModel("LocalDate", dateSchema, type, null);
+        return new Schema<>().$ref("#/components/schemas/LocalDate");
+    }
+
+    return super.resolve(type, context, chain);
+}
+```
+
+## Registering a converter
+
+<Tabs>
+  <Tab title="Programmatic">
+    Call `addConverter()` on the singleton before the application generates its first OpenAPI document. Converters added this way are prepended to the chain — they run before the built-in `ModelResolver`.
+
+    ```java
+    import io.swagger.v3.core.converter.ModelConverters;
+    import com.fasterxml.jackson.databind.ObjectMapper;
+
+    ModelConverters.getInstance().addConverter(
+        new LocalDateConverter(new ObjectMapper())
+    );
+    ```
+
+    For OpenAPI 3.1 mode, use the 3.1-specific singleton:
+
+    ```java
+    ModelConverters.getInstance(true).addConverter(
+        new LocalDateConverter(new ObjectMapper())
+    );
+    ```
+  </Tab>
+  <Tab title="SwaggerConfiguration">
+    Pass a set of fully-qualified class names to `SwaggerConfiguration.modelConverterClasses()`. Swagger Core instantiates each class via its no-arg constructor and registers it before the first scan.
+
+    ```java
+    import io.swagger.v3.oas.integration.SwaggerConfiguration;
+    import java.util.Set;
+
+    SwaggerConfiguration config = new SwaggerConfiguration()
+        .modelConverterClasses(Set.of(
+            "com.example.openapi.LocalDateConverter"
+        ));
+    ```
+  </Tab>
+  <Tab title="ServiceLoader (automatic)">
+    Place a file at `META-INF/services/io.swagger.v3.core.converter.ModelConverter` on the classpath containing the fully-qualified class name of your converter. Swagger Core discovers and registers it automatically via `java.util.ServiceLoader` when the singleton is first initialised.
+
+    ```
+    # META-INF/services/io.swagger.v3.core.converter.ModelConverter
+    com.example.openapi.LocalDateConverter
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+`ModelConverters.addConverter()` prepends the converter to the list (index 0), so the most recently registered converter runs first. Register your converters in reverse priority order if multiple converters may handle the same type.
+</Tip>
+
+## Reading models manually
+
+You can invoke the resolution pipeline directly without a JAX-RS scan, which is useful for testing your converter in isolation:
+
+```java
+import io.swagger.v3.core.converter.ModelConverters;
+import io.swagger.v3.oas.models.media.Schema;
+import java.util.Map;
+
+// Returns only the root schema for the type
+Map<String, Schema> schemas = ModelConverters.getInstance().read(MyClass.class);
+
+// Returns the root schema plus all transitively referenced schemas
+Map<String, Schema> allSchemas = ModelConverters.getInstance().readAll(MyClass.class);
+```
+
+`readAll()` is the equivalent of asking "what would appear in `components/schemas` if a JAX-RS endpoint used this type?"

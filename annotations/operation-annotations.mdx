@@ -1,0 +1,487 @@
+---
+title: "Operation annotations"
+description: "Reference for @Operation, @Parameter, @RequestBody, @ApiResponse, @Callback, @Tag, @Server, @ExternalDocumentation, and @Hidden."
+---
+
+Operation annotations describe individual HTTP endpoints — their inputs, outputs, grouping, and visibility. The Swagger reader engine combines these annotations with JAX-RS metadata to produce the `paths` section of your OpenAPI document.
+
+## @Operation
+
+`io.swagger.v3.oas.annotations.Operation`
+
+Marks a method as an OpenAPI operation and sets its core metadata. The annotation is optional — any JAX-RS method with `@Path` and an HTTP method annotation is picked up by default — but `@Operation` lets you supply extra detail.
+
+```java
+public @interface Operation {
+    String          method()        default "";
+    String[]        tags()          default {};
+    String          summary()       default "";
+    String          description()   default "";
+    RequestBody     requestBody()   default @RequestBody();
+    ExternalDocumentation externalDocs() default @ExternalDocumentation();
+    String          operationId()   default "";
+    Parameter[]     parameters()   default {};
+    ApiResponse[]   responses()    default {};
+    boolean         deprecated()   default false;
+    SecurityRequirement[] security() default {};
+    Server[]        servers()      default {};
+    Extension[]     extensions()   default {};
+    boolean         hidden()       default false;
+    boolean         ignoreJsonView() default false;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `method` | `String` | HTTP method override. Usually inferred from JAX-RS (`@GET`, `@POST`, etc.). |
+| `tags` | `String[]` | Logical grouping tags. Can also be set with standalone `@Tag`. |
+| `summary` | `String` | Short description, 120 characters or fewer. Displayed prominently in UI tools. |
+| `description` | `String` | Full description; supports CommonMark. |
+| `requestBody` | `RequestBody` | Inline request body definition. |
+| `externalDocs` | `ExternalDocumentation` | Link to external documentation. |
+| `operationId` | `String` | Unique identifier used by code-generation tools. |
+| `parameters` | `Parameter[]` | Additional parameters not detected automatically. |
+| `responses` | `ApiResponse[]` | Inline response definitions. |
+| `deprecated` | `boolean` | Marks the operation as deprecated. |
+| `security` | `SecurityRequirement[]` | Security requirements for this operation. |
+| `servers` | `Server[]` | Operation-level server overrides. |
+| `hidden` | `boolean` | Excludes this operation from the generated spec. |
+| `ignoreJsonView` | `boolean` | Ignores `@JsonView` when resolving types. |
+
+### Usage
+
+```java
+@GET
+@Path("/{id}")
+@Operation(
+    summary     = "Retrieve an order",
+    description = "Returns the full details of an order by its identifier.",
+    operationId = "getOrderById",
+    deprecated  = false
+)
+public Order getOrder(@PathParam("id") String id) { /* ... */ }
+```
+
+---
+
+## @Parameter
+
+`io.swagger.v3.oas.annotations.Parameter`
+
+Describes a path, query, header, or cookie parameter. Can be placed directly on a method parameter or specified inside `@Operation#parameters()`. `@Parameter` is `@Repeatable` via the container annotation `@Parameters`.
+
+```java
+public @interface Parameter {
+    String         name()           default "";
+    ParameterIn    in()             default ParameterIn.DEFAULT;
+    String         description()    default "";
+    boolean        required()       default false;
+    boolean        deprecated()     default false;
+    boolean        allowEmptyValue() default false;
+    ParameterStyle style()          default ParameterStyle.DEFAULT;
+    Explode        explode()        default Explode.DEFAULT;
+    boolean        allowReserved()  default false;
+    Schema         schema()         default @Schema();
+    ArraySchema    array()          default @ArraySchema();
+    Content[]      content()        default {};
+    boolean        hidden()         default false;
+    ExampleObject[] examples()      default {};
+    String         example()        default "";
+    Extension[]    extensions()     default {};
+    String         ref()            default "";
+}
+```
+
+### ParameterIn values
+
+| Value | Description |
+|---|---|
+| `ParameterIn.PATH` | Part of the URL path (e.g. `/orders/{id}`). Always required. |
+| `ParameterIn.QUERY` | Appended to the URL (e.g. `?page=1`). |
+| `ParameterIn.HEADER` | Passed in an HTTP request header. |
+| `ParameterIn.COOKIE` | Passed in a cookie. |
+
+### Path parameter
+
+```java
+@GET
+@Path("/orders/{id}")
+@Operation(summary = "Get order by ID")
+public Order getOrder(
+    @Parameter(
+        name        = "id",
+        in          = ParameterIn.PATH,
+        description = "Unique order identifier",
+        required    = true,
+        schema      = @Schema(type = "string", format = "uuid")
+    )
+    @PathParam("id") String id
+) { /* ... */ }
+```
+
+### Query parameter
+
+```java
+@GET
+@Path("/orders")
+@Operation(summary = "List orders")
+public List<Order> listOrders(
+    @Parameter(
+        name        = "status",
+        in          = ParameterIn.QUERY,
+        description = "Filter by order status",
+        schema      = @Schema(
+            type            = "string",
+            allowableValues = {"pending", "shipped", "delivered"}
+        )
+    )
+    @QueryParam("status") String status,
+
+    @Parameter(name = "page", in = ParameterIn.QUERY, schema = @Schema(type = "integer"))
+    @QueryParam("page") int page
+) { /* ... */ }
+```
+
+### Header parameter
+
+```java
+@GET
+@Path("/me")
+@Operation(summary = "Get current user")
+public User getMe(
+    @Parameter(
+        name        = "X-Request-ID",
+        in          = ParameterIn.HEADER,
+        description = "Client-generated request correlation ID",
+        schema      = @Schema(type = "string")
+    )
+    @HeaderParam("X-Request-ID") String requestId
+) { /* ... */ }
+```
+
+---
+
+## @RequestBody
+
+`io.swagger.v3.oas.annotations.parameters.RequestBody`
+
+Documents the body of an HTTP request. Place it on the method parameter that carries the body, or embed it in `@Operation#requestBody()`.
+
+```java
+public @interface RequestBody {
+    String      description()            default "";
+    Content[]   content()               default {};
+    boolean     required()              default false;
+    Extension[] extensions()            default {};
+    String      ref()                   default "";
+    boolean     useParameterTypeSchema() default false;
+}
+```
+
+| Field | Description |
+|---|---|
+| `description` | Brief description of the request body. |
+| `content` | Array of `@Content` entries for different media types. |
+| `required` | Whether the request body is required. Defaults to `false`. |
+| `useParameterTypeSchema` | When `true`, resolves the schema from the annotated parameter type instead of requiring an explicit schema. |
+
+```java
+@POST
+@Path("/orders")
+@Consumes(MediaType.APPLICATION_JSON)
+@Operation(summary = "Create an order")
+public Response createOrder(
+    @RequestBody(
+        description = "Order payload",
+        required    = true,
+        content     = @Content(
+            mediaType = MediaType.APPLICATION_JSON,
+            schema    = @Schema(implementation = CreateOrderRequest.class)
+        )
+    )
+    CreateOrderRequest request
+) { /* ... */ }
+```
+
+---
+
+## @ApiResponse and @ApiResponses
+
+`io.swagger.v3.oas.annotations.responses.ApiResponse`
+`io.swagger.v3.oas.annotations.responses.ApiResponses`
+
+`@ApiResponse` documents one possible response. It is `@Repeatable`, so you can apply it multiple times directly on a method (Java 8+). `@ApiResponses` is the explicit container annotation.
+
+```java
+public @interface ApiResponse {
+    String      description()         default "";
+    String      responseCode()        default "default";
+    Header[]    headers()             default {};
+    Link[]      links()               default {};
+    Content[]   content()             default {};
+    Extension[] extensions()          default {};
+    String      ref()                 default "";
+    boolean     useReturnTypeSchema() default false;
+}
+```
+
+| Field | Description |
+|---|---|
+| `responseCode` | HTTP status code string (e.g. `"200"`, `"404"`) or `"default"`. |
+| `description` | Short description of this response. |
+| `content` | Array of `@Content` describing the response body for each media type. |
+| `headers` | Response header definitions. |
+| `links` | Hypermedia links available from this response. |
+| `useReturnTypeSchema` | When `true`, infers the response schema from the method return type. |
+
+### Multiple response codes
+
+```java
+@GET
+@Path("/orders/{id}")
+@Operation(summary = "Get order by ID")
+@ApiResponse(
+    responseCode = "200",
+    description  = "Order found",
+    content      = @Content(
+        mediaType = MediaType.APPLICATION_JSON,
+        schema    = @Schema(implementation = Order.class)
+    )
+)
+@ApiResponse(responseCode = "404", description = "Order not found")
+@ApiResponse(responseCode = "500", description = "Internal server error")
+public Order getOrder(@PathParam("id") String id) { /* ... */ }
+```
+
+---
+
+## @Callback and @Callbacks
+
+`io.swagger.v3.oas.annotations.callbacks.Callback`
+`io.swagger.v3.oas.annotations.callbacks.Callbacks`
+
+`@Callback` defines an out-of-band HTTP request that the server will send to a client-specified URL after the parent operation completes. It is `@Repeatable` via `@Callbacks`.
+
+```java
+public @interface Callback {
+    String      name()                  default "";
+    String      callbackUrlExpression() default "";
+    Operation[] operation()             default {};
+    Extension[] extensions()            default {};
+    String      ref()                   default "";
+}
+```
+
+| Field | Description |
+|---|---|
+| `name` | Friendly name used to reference this callback in the spec. |
+| `callbackUrlExpression` | Runtime expression resolving to the destination URL, e.g. `{$request.body#/callbackUrl}`. |
+| `operation` | Array of `@Operation` objects describing the callback requests. |
+
+```java
+@POST
+@Path("/subscriptions")
+@Operation(summary = "Subscribe to order events")
+@Callback(
+    name                  = "orderUpdate",
+    callbackUrlExpression = "{$request.body#/callbackUrl}",
+    operation = @Operation(
+        method      = "POST",
+        summary     = "Order status update notification",
+        requestBody = @RequestBody(
+            content = @Content(schema = @Schema(implementation = OrderEvent.class))
+        ),
+        responses   = {
+            @ApiResponse(responseCode = "200", description = "Notification accepted")
+        }
+    )
+)
+public Response subscribe(SubscriptionRequest req) { /* ... */ }
+```
+
+---
+
+## @Tag and @Tags
+
+`io.swagger.v3.oas.annotations.tags.Tag`
+`io.swagger.v3.oas.annotations.tags.Tags`
+
+Groups operations under a named tag. Apply at class level to tag all operations in the resource, or at method level for a single operation. `@Tag` is `@Repeatable` via `@Tags`.
+
+```java
+public @interface Tag {
+    String                name();                              // required
+    String                description()    default "";
+    ExternalDocumentation externalDocs()   default @ExternalDocumentation();
+    Extension[]           extensions()     default {};
+}
+```
+
+<Note>
+When only `name` is provided, the tag is added to the operation but not to the global `tags` list. Provide `description` or `externalDocs` to also register the tag globally.
+</Note>
+
+```java
+// Class-level: every method in this resource gets the "orders" tag.
+@Tag(name = "orders", description = "Operations related to order management")
+@Path("/orders")
+public class OrderResource {
+
+    // Method-level: also gets the "reporting" tag.
+    @GET
+    @Path("/summary")
+    @Tag(name = "reporting")
+    @Operation(summary = "Order summary report")
+    public OrderSummary getSummary() { /* ... */ }
+}
+```
+
+---
+
+## @Server and @Servers
+
+`io.swagger.v3.oas.annotations.servers.Server`
+`io.swagger.v3.oas.annotations.servers.Servers`
+
+Declares a server base URL. Can appear at operation level, class level (all operations in the class), or inside `@OpenAPIDefinition` (global). `@Server` is `@Repeatable` via `@Servers`.
+
+```java
+public @interface Server {
+    String           url()         default "";
+    String           description() default "";
+    ServerVariable[] variables()   default {};
+    Extension[]      extensions()  default {};
+}
+```
+
+```java
+// Override the server for a single operation (e.g. a legacy endpoint).
+@GET
+@Path("/legacy-report")
+@Server(url = "https://legacy.example.com/api", description = "Legacy API host")
+@Operation(summary = "Legacy report endpoint")
+public Report getLegacyReport() { /* ... */ }
+```
+
+---
+
+## @ExternalDocumentation
+
+`io.swagger.v3.oas.annotations.ExternalDocumentation`
+
+Attaches a link to external reference documentation. Can be used as a field within `@Operation`, `@Tag`, `@Schema`, or `@OpenAPIDefinition`.
+
+```java
+public @interface ExternalDocumentation {
+    String      description() default "";
+    String      url()         default "";
+    Extension[] extensions()  default {};
+}
+```
+
+```java
+@Operation(
+    summary      = "Process payment",
+    externalDocs = @ExternalDocumentation(
+        description = "Payment processing guide",
+        url         = "https://docs.example.com/payments"
+    )
+)
+```
+
+---
+
+## @Hidden
+
+`io.swagger.v3.oas.annotations.Hidden`
+
+A marker annotation with no fields. When placed on a class, method, or field, the Swagger reader excludes that element from the generated spec entirely.
+
+```java
+public @interface Hidden {}
+```
+
+Targets: `METHOD`, `TYPE`, `FIELD`, `ANNOTATION_TYPE`.
+
+```java
+// Entire resource class hidden from the spec.
+@Hidden
+@Path("/internal")
+public class InternalResource {
+    /* ... */
+}
+```
+
+```java
+// Single method hidden while the rest of the resource is documented.
+@GET
+@Path("/debug")
+@Hidden
+public DebugInfo getDebugInfo() { /* ... */ }
+```
+
+---
+
+## Full resource example
+
+The example below combines multiple operation annotations on a single JAX-RS resource.
+
+```java
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.parameters.RequestBody;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+import javax.ws.rs.*;
+import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Response;
+import java.util.List;
+
+@Tag(name = "products", description = "Product catalogue operations")
+@Path("/products")
+@Produces(MediaType.APPLICATION_JSON)
+public class ProductResource {
+
+    @GET
+    @Operation(
+        summary     = "List all products",
+        operationId = "listProducts",
+        security    = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponse(
+        responseCode = "200",
+        description  = "Product list",
+        content      = @Content(schema = @Schema(implementation = Product.class))
+    )
+    public List<Product> list(
+        @Parameter(name = "q", in = ParameterIn.QUERY, description = "Search term")
+        @QueryParam("q") String query
+    ) { /* ... */ }
+
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Operation(summary = "Create a product", operationId = "createProduct")
+    @ApiResponses({
+        @ApiResponse(responseCode = "201", description = "Product created"),
+        @ApiResponse(responseCode = "400", description = "Invalid request body"),
+        @ApiResponse(responseCode = "409", description = "Product already exists")
+    })
+    public Response create(
+        @RequestBody(
+            required = true,
+            content  = @Content(schema = @Schema(implementation = CreateProductRequest.class))
+        ) CreateProductRequest req
+    ) { /* ... */ }
+
+    @GET
+    @Path("/admin/metrics")
+    @Hidden
+    public ProductMetrics getMetrics() { /* ... */ }
+}
+```

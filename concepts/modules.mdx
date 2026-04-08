@@ -1,0 +1,134 @@
+---
+title: "Module architecture"
+description: "A guide to each Maven module in the swagger-core repository, its responsibilities, and the dependency relationships between them."
+---
+
+The `swagger-api/swagger-core` repository is a multi-module Maven project with the root artifact `io.swagger.core.v3:swagger-project`. Each module has a single, well-defined responsibility and depends only on the modules below it in the dependency graph.
+
+## Module table
+
+| Module | ArtifactId | Group ID | Description |
+|---|---|---|---|
+| Annotations | `swagger-annotations` | `io.swagger.core.v3` | Java annotations that mirror OpenAPI objects (`@Operation`, `@Schema`, `@Parameter`, etc.) |
+| Models | `swagger-models` | `io.swagger.core.v3` | Java POJOs representing every OpenAPI object (`OpenAPI`, `PathItem`, `Operation`, `Schema`, `Components`, etc.) |
+| Core | `swagger-core` | `io.swagger.core.v3` | `ModelConverter` / `ModelConverters` chain, `SpecFilter`, Jackson serialisation utilities (`Json`, `Yaml`, `Json31`, `Yaml31`), `ModelResolver` |
+| Integration | `swagger-integration` | `io.swagger.core.v3` | `OpenApiContext`, `GenericOpenApiContext`, `SwaggerConfiguration`, `OpenAPIConfiguration` interface, config loaders, scanner |
+| JAX-RS 2 | `swagger-jaxrs2` | `io.swagger.core.v3` | JAX-RS `Reader`, `ReaderListener`, `OpenApiResource` servlet, `OpenAPIExtension` SPI |
+| JAX-RS servlet initializer | `swagger-jaxrs2-servlet-initializer` | `io.swagger.core.v3` | Auto-registers `OpenApiResource` via `ServletContainerInitializer` |
+| JAX-RS servlet initializer v2 | `swagger-jaxrs2-servlet-initializer-v2` | `io.swagger.core.v3` | Alternative servlet initializer for JAX-RS 2.1+ environments |
+| Maven plugin | `swagger-maven-plugin` | `io.swagger.core.v3` | Generates an OpenAPI document at build time from a Maven `generate` goal |
+| Gradle plugin | `swagger-gradle-plugin` | `io.swagger.core.v3` | Same capability as the Maven plugin, for Gradle builds |
+| Jakarta transformer plugin | `swagger-eclipse-transformer-maven-plugin` | `io.swagger.core.v3` | Transforms `javax.*` artifacts to `jakarta.*` namespace using the Eclipse Transformer |
+| Jakarta project | `swagger-project-jakarta` | `io.swagger.core.v3` | Pre-transformed Jakarta-namespace equivalents of the core modules |
+| Java 17 support | `swagger-java17-support` | `io.swagger.core.v3` | Additional support activated automatically when building on JDK 17+ |
+
+## Module details
+
+<CardGroup cols={2}>
+  <Card title="swagger-annotations" icon="tag">
+    Pure annotation definitions with no runtime dependencies beyond the JDK. Annotations include `@OpenAPIDefinition`, `@Operation`, `@Parameter`, `@RequestBody`, `@ApiResponse`, `@Schema`, `@SecurityScheme`, `@SecurityRequirement`, `@Tag`, `@Server`, `@ExternalDocumentation`, `@Hidden`, `@Webhooks`, and `@Webhook`. These are the only annotations Swagger Core needs on your resource classes.
+  </Card>
+  <Card title="swagger-models" icon="cube">
+    Plain Java model classes that map one-to-one to the OpenAPI object hierarchy: `OpenAPI`, `Info`, `PathItem`, `Operation`, `Parameter`, `RequestBody`, `ApiResponse`, `Schema`, `Components`, `SecurityScheme`, `Tag`, `Server`, and so on. These are the objects populated during reading and serialised to JSON/YAML. The `Schema` class carries both 3.0-specific fields (e.g. `nullable`) and 3.1-specific fields (e.g. `types: Set<String>`, `if`/`then`/`else`).
+  </Card>
+  <Card title="swagger-core" icon="wrench">
+    The low-level conversion and serialisation layer. Key types:
+
+    - **`ModelConverter`** (`io.swagger.v3.core.converter.ModelConverter`) — interface whose single method `resolve(AnnotatedType, ModelConverterContext, Iterator<ModelConverter>)` converts a Java type to an OpenAPI `Schema`.
+    - **`ModelConverters`** — singleton chain manager; initialises with `ModelResolver` and discovers additional converters via `ServiceLoader<ModelConverter>`.
+    - **`ModelResolver`** — Jackson-based default converter; walks bean properties and honours bean-validation constraints.
+    - **`SpecFilter`** — post-processing filter that can remove or transform spec elements (used internally by `OpenAPI31SpecFilter` for 3.0→3.1 conversion).
+    - **`Json` / `Json31` / `Yaml` / `Yaml31`** — pre-configured Jackson `ObjectMapper` factories for the two formats and two spec versions.
+  </Card>
+  <Card title="swagger-integration" icon="gear">
+    The integration and wiring layer that orchestrates scanning and reading:
+
+    - **`OpenAPIConfiguration`** — interface declaring all configuration properties.
+    - **`SwaggerConfiguration`** — concrete, fluent implementation of `OpenAPIConfiguration`.
+    - **`GenericOpenApiContext`** — central runtime context; builds the scanner, reader, and object-mapper instances during `init()`, calls `scanner.classes()` then `reader.read(classes, resources)`, and caches the result.
+    - **`GenericOpenApiScanner`** — default classpath scanner backed by ClassGraph.
+    - Config loaders: `ClasspathOpenApiConfigurationLoader`, `FileOpenApiConfigurationLoader`, `URLOpenApiConfigurationLoader`, `ServiceOpenApiConfigurationLoader` — auto-discovered from well-known locations (`openapi-configuration.yaml`, `openapi-configuration.json`, `openapi.yaml`, `openapi.json`).
+  </Card>
+  <Card title="swagger-jaxrs2" icon="server">
+    The JAX-RS reading layer:
+
+    - **`Reader`** (`io.swagger.v3.jaxrs2.Reader`) — implements `OpenApiReader`; scans JAX-RS resource classes, extracts HTTP method annotations and Swagger annotations, delegates type resolution to `ModelConverters`, and constructs the `OpenAPI` model.
+    - **`ReaderListener`** — extension point for code that needs to inspect or modify the model before or after the scan.
+    - **`OpenApiResource`** — JAX-RS resource that exposes the generated spec at `/openapi.json` and `/openapi.yaml`.
+    - **`OpenAPIExtension`** — SPI for decorating `Operation` objects with additional data from custom annotations.
+  </Card>
+  <Card title="Build plugins" icon="hammer">
+    **`swagger-maven-plugin`** and **`swagger-gradle-plugin`** invoke the same `GenericOpenApiContext` pipeline at build time and write the resulting JSON/YAML to the project's output directory. Both accept the same configuration properties as `SwaggerConfiguration`.
+  </Card>
+</CardGroup>
+
+## Dependency graph
+
+The arrows represent compile-scope Maven dependencies (→ means "depends on"):
+
+```
+swagger-annotations
+       ↑
+swagger-models
+       ↑
+swagger-core  ──────────────────────────────┐
+       ↑                                    │
+swagger-integration                         │
+       ↑                                    │
+swagger-jaxrs2 ◄────────────────────────────┘
+       ↑
+swagger-jaxrs2-servlet-initializer
+swagger-jaxrs2-servlet-initializer-v2
+
+swagger-integration
+       ↑
+swagger-maven-plugin
+swagger-gradle-plugin
+```
+
+<Note>
+`swagger-jaxrs2` depends on `swagger-integration`, which depends on `swagger-core`, which depends on `swagger-models` and `swagger-annotations`. Depending on `swagger-jaxrs2` transitively pulls in the entire stack.
+</Note>
+
+## Adding Swagger Core to your project
+
+<Tabs>
+  <Tab title="Maven — JAX-RS">
+    ```xml
+    <dependency>
+        <groupId>io.swagger.core.v3</groupId>
+        <artifactId>swagger-jaxrs2</artifactId>
+        <version>2.2.47</version>
+    </dependency>
+    ```
+  </Tab>
+  <Tab title="Maven — integration only">
+    ```xml
+    <!-- Use this when you supply your own reader/scanner -->
+    <dependency>
+        <groupId>io.swagger.core.v3</groupId>
+        <artifactId>swagger-integration</artifactId>
+        <version>2.2.47</version>
+    </dependency>
+    ```
+  </Tab>
+  <Tab title="Maven — Jakarta namespace">
+    ```xml
+    <!-- Requires the swagger-project-jakarta module -->
+    <dependency>
+        <groupId>io.swagger.core.v3</groupId>
+        <artifactId>swagger-jaxrs2-jakarta</artifactId>
+        <version>2.2.47</version>
+    </dependency>
+    ```
+  </Tab>
+  <Tab title="Gradle">
+    ```groovy
+    implementation 'io.swagger.core.v3:swagger-jaxrs2:2.2.47'
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+If you only need the model classes and annotations at compile time (for example in a shared DTO library), depend on `swagger-annotations` and `swagger-models` separately to avoid pulling in Jackson and ClassGraph as transitive dependencies.
+</Tip>

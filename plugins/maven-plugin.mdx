@@ -1,0 +1,332 @@
+---
+title: "Maven plugin"
+description: "Generate OpenAPI specifications at build time using the swagger-maven-plugin. Scans your JAX-RS or annotated classes and writes JSON or YAML output during the compile phase."
+---
+
+The `swagger-maven-plugin` resolves your project's OpenAPI specification by scanning annotated resource classes and writes the result to disk. It binds to the `compile` phase by default, so the spec is always up to date before packaging.
+
+## Installation
+
+Add the plugin to the `<build><plugins>` section of your `pom.xml`. The plugin requires `COMPILE_PLUS_RUNTIME` dependency resolution, which is handled automatically.
+
+```xml
+<plugin>
+  <groupId>io.swagger.core.v3</groupId>
+  <artifactId>swagger-maven-plugin</artifactId>
+  <version>2.2.46</version>
+  <executions>
+    <execution>
+      <phase>compile</phase>
+      <goals>
+        <goal>resolve</goal>
+      </goals>
+    </execution>
+  </executions>
+  <configuration>
+    <outputPath>${project.build.directory}</outputPath>
+    <resourcePackages>
+      <resourcePackage>com.example.api</resourcePackage>
+    </resourcePackages>
+    <outputFormat>JSON</outputFormat>
+  </configuration>
+</plugin>
+```
+
+## Goal: `resolve`
+
+**Default phase:** `COMPILE`
+
+Resolves the OpenAPI specification by scanning annotated classes on the compile+runtime classpath and writes the output to `outputPath`.
+
+## Configuration parameters
+
+### Output
+
+<ParamField path="outputFileName" type="String" default="openapi">
+  Base file name for the generated file, without extension. Produces `openapi.json`, `openapi.yaml`, or both depending on `outputFormat`.
+</ParamField>
+
+<ParamField path="outputPath" type="String" required>
+  Directory path where the generated file(s) are written. The directory is created if it does not exist.
+</ParamField>
+
+<ParamField path="outputFormat" type="JSON | YAML | JSONANDYAML" default="JSON">
+  Output format. Use `JSONANDYAML` to write both formats simultaneously.
+</ParamField>
+
+<ParamField path="encoding" type="String" default="project.build.sourceEncoding">
+  Character encoding of the output file(s). Falls back to the project's `project.build.sourceEncoding` property, then `UTF-8`.
+</ParamField>
+
+<ParamField path="prettyPrint" type="Boolean" default="false">
+  When `true`, the output JSON or YAML is formatted with indentation.
+</ParamField>
+
+<ParamField path="sortOutput" type="Boolean" default="false">
+  When `true`, object properties and map keys in the output are sorted alphabetically. Available since 2.1.6.
+</ParamField>
+
+### Resource scanning
+
+<ParamField path="resourcePackages" type="Set&lt;String&gt;">
+  Set of package names to scan for JAX-RS resources and Swagger annotations. Mutually usable with `resourceClasses`.
+
+  ```xml
+  <resourcePackages>
+    <resourcePackage>com.example.api</resourcePackage>
+    <resourcePackage>com.example.admin</resourcePackage>
+  </resourcePackages>
+  ```
+</ParamField>
+
+<ParamField path="resourceClasses" type="Set&lt;String&gt;">
+  Set of fully-qualified class names to use as explicit resource roots instead of, or in addition to, package scanning.
+
+  ```xml
+  <resourceClasses>
+    <resourceClass>com.example.api.PetResource</resourceClass>
+  </resourceClasses>
+  ```
+</ParamField>
+
+<ParamField path="readAllResources" type="Boolean" default="true">
+  When `true`, all resources discovered on the classpath are read, not only those explicitly listed in `resourcePackages` or `resourceClasses`.
+</ParamField>
+
+<ParamField path="ignoredRoutes" type="Collection&lt;String&gt;">
+  Routes to exclude from the resolved specification. Each entry is a path prefix that will be omitted.
+
+  ```xml
+  <ignoredRoutes>
+    <ignoredRoute>/internal</ignoredRoute>
+    <ignoredRoute>/actuator</ignoredRoute>
+  </ignoredRoutes>
+  ```
+</ParamField>
+
+### Input files
+
+<ParamField path="openapiFilePath" type="String">
+  Path to a base OpenAPI file (JSON or YAML). Its contents are merged with the resolved specification. Typically used to supply `info`, `servers`, or `security` sections that cannot be derived from annotations.
+</ParamField>
+
+<ParamField path="configurationFilePath" type="String">
+  Path to a `SwaggerConfiguration` file in JSON or YAML format. Settings in this file are applied before any other plugin parameters, which can override them. Available since 2.0.8.
+</ParamField>
+
+### Extension points
+
+<ParamField path="filterClass" type="String">
+  Fully-qualified class name of an `OpenAPISpecFilter` implementation. Applied to the resolved spec after scanning.
+</ParamField>
+
+<ParamField path="readerClass" type="String">
+  Fully-qualified class name of a custom `OpenApiReader` implementation.
+</ParamField>
+
+<ParamField path="scannerClass" type="String">
+  Fully-qualified class name of a custom `OpenApiScanner` implementation.
+</ParamField>
+
+<ParamField path="objectMapperProcessorClass" type="String">
+  Fully-qualified class name of a custom `ObjectMapperProcessor` that configures the Jackson `ObjectMapper` used for serialization. Available since 2.0.6.
+</ParamField>
+
+<ParamField path="modelConverterClasses" type="LinkedHashSet&lt;String&gt;">
+  Ordered set of fully-qualified `ModelConverter` class names applied during schema resolution.
+
+  ```xml
+  <modelConverterClasses>
+    <modelConverterClass>com.example.MyModelConverter</modelConverterClass>
+  </modelConverterClasses>
+  ```
+</ParamField>
+
+<ParamField path="validatorProcessorClass" type="String">
+  Fully-qualified class name of a custom `ValidatorProcessor` implementation (`io.swagger.v3.core.util.ValidatorProcessor`). Available since 2.2.29.
+</ParamField>
+
+### Application path
+
+<ParamField path="alwaysResolveAppPath" type="Boolean" default="false">
+  When `true`, the JAX-RS `@ApplicationPath` is resolved from annotations even when not running in a servlet container (e.g. at build time). Available since 2.1.9.
+</ParamField>
+
+<ParamField path="skipResolveAppPath" type="Boolean" default="false">
+  When `true`, resolving the `@ApplicationPath` annotation is skipped entirely. Available since 2.1.15.
+</ParamField>
+
+### Response handling
+
+<ParamField path="defaultResponseCode" type="String">
+  HTTP status code used when resolving operations that have no explicit `@ApiResponse` annotation with a status code. Available since 2.2.17.
+</ParamField>
+
+<ParamField path="groupsValidationStrategy" type="String">
+  Strategy for processing Bean Validation `groups`. Accepted values: `never`, `always`, `neverIfNoContext`. Available since 2.2.19.
+</ParamField>
+
+### OpenAPI version
+
+<ParamField path="openAPI31" type="Boolean" default="false">
+  When `true`, the resolved spec is processed according to OpenAPI 3.1 rules. Available since 2.2.0.
+</ParamField>
+
+<ParamField path="convertToOpenAPI31" type="Boolean" default="false">
+  When `true`, the resolved 3.0 spec is automatically converted to 3.1 format. Setting this implicitly enables `openAPI31`. Available since 2.2.12.
+</ParamField>
+
+<ParamField path="openAPIVersion" type="String">
+  Explicit OpenAPI version string to embed in the output (e.g. `3.0.1` or `3.1.0`). Defaults to the version that matches the resolution mode. Available since 2.2.28.
+</ParamField>
+
+<ParamField path="schemaResolution" type="String">
+  Controls how object schemas and their properties are resolved for OAS 3.0. Accepted values mirror `Schema.SchemaResolution` enum constants. Available since 2.2.24.
+</ParamField>
+
+### Execution control
+
+<ParamField path="contextId" type="String" default="${project.artifactId}">
+  A unique identifier for the `OpenApiContext` instance. Change this when you need multiple independent plugin executions in the same build (e.g. different output specs for different modules). Available since 2.0.6.
+</ParamField>
+
+<ParamField path="skip" type="Boolean" default="false">
+  When `true`, the plugin execution is skipped entirely. Useful for CI overrides: `-Dresolve.skip=true`.
+</ParamField>
+
+---
+
+## Examples
+
+### Minimal configuration
+
+Scan a single package and write `openapi.json` to the build directory:
+
+```xml
+<plugin>
+  <groupId>io.swagger.core.v3</groupId>
+  <artifactId>swagger-maven-plugin</artifactId>
+  <version>2.2.46</version>
+  <executions>
+    <execution>
+      <phase>compile</phase>
+      <goals>
+        <goal>resolve</goal>
+      </goals>
+    </execution>
+  </executions>
+  <configuration>
+    <outputPath>${project.build.directory}</outputPath>
+    <resourcePackages>
+      <resourcePackage>com.example.api</resourcePackage>
+    </resourcePackages>
+  </configuration>
+</plugin>
+```
+
+### Full configuration with all parameters
+
+```xml
+<plugin>
+  <groupId>io.swagger.core.v3</groupId>
+  <artifactId>swagger-maven-plugin</artifactId>
+  <version>2.2.46</version>
+  <executions>
+    <execution>
+      <phase>compile</phase>
+      <goals>
+        <goal>resolve</goal>
+      </goals>
+    </execution>
+  </executions>
+  <configuration>
+    <!-- Output -->
+    <outputFileName>openapi</outputFileName>
+    <outputPath>${project.build.directory}</outputPath>
+    <outputFormat>JSONANDYAML</outputFormat>
+    <encoding>UTF-8</encoding>
+    <prettyPrint>true</prettyPrint>
+    <sortOutput>false</sortOutput>
+
+    <!-- Resource scanning -->
+    <resourcePackages>
+      <resourcePackage>com.example.api</resourcePackage>
+    </resourcePackages>
+    <resourceClasses>
+      <resourceClass>com.example.api.AdminResource</resourceClass>
+    </resourceClasses>
+    <readAllResources>true</readAllResources>
+    <ignoredRoutes>
+      <ignoredRoute>/internal</ignoredRoute>
+    </ignoredRoutes>
+
+    <!-- Input files -->
+    <openapiFilePath>${project.basedir}/src/main/resources/openapi-base.yaml</openapiFilePath>
+
+    <!-- Extension points -->
+    <filterClass>com.example.MyOpenAPIFilter</filterClass>
+    <readerClass>com.example.MyOpenApiReader</readerClass>
+    <scannerClass>com.example.MyOpenApiScanner</scannerClass>
+    <objectMapperProcessorClass>com.example.MyObjectMapperProcessor</objectMapperProcessorClass>
+    <modelConverterClasses>
+      <modelConverterClass>com.example.MyModelConverter</modelConverterClass>
+    </modelConverterClasses>
+
+    <!-- Application path -->
+    <alwaysResolveAppPath>false</alwaysResolveAppPath>
+    <skipResolveAppPath>false</skipResolveAppPath>
+
+    <!-- Response handling -->
+    <defaultResponseCode>200</defaultResponseCode>
+    <groupsValidationStrategy>never</groupsValidationStrategy>
+
+    <!-- OpenAPI version -->
+    <openAPI31>false</openAPI31>
+    <convertToOpenAPI31>false</convertToOpenAPI31>
+    <openAPIVersion>3.0.1</openAPIVersion>
+    <schemaResolution>DEFAULT</schemaResolution>
+
+    <!-- Execution control -->
+    <skip>false</skip>
+  </configuration>
+</plugin>
+```
+
+### Using an external `openapi-configuration.yaml`
+
+Store scanner and reader configuration in a separate file and reference it via `configurationFilePath`. This is useful when you want to share scanner settings across modules or keep the `pom.xml` lean.
+
+```xml
+<configuration>
+  <outputPath>${project.build.directory}</outputPath>
+  <configurationFilePath>${project.basedir}/src/main/resources/openapi-configuration.yaml</configurationFilePath>
+</configuration>
+```
+
+The referenced `openapi-configuration.yaml` is deserialized into a `SwaggerConfiguration` object. Any parameter set directly in `<configuration>` overrides the value from the file.
+
+```yaml
+# src/main/resources/openapi-configuration.yaml
+resourcePackages:
+  - com.example.api
+prettyPrint: true
+readAllResources: true
+openAPI:
+  info:
+    title: Pet Store API
+    version: "1.0.0"
+    description: >
+      Sample Pet Store application demonstrating swagger-maven-plugin.
+  servers:
+    - url: https://api.example.com/v1
+```
+
+<Note>
+  `configurationFilePath` is resolved relative to the working directory when Maven executes (usually the project root). Use `${project.basedir}` to anchor it to the project.
+</Note>
+
+### Skipping execution from the command line
+
+```bash
+mvn compile -Dresolve.skip=true
+```

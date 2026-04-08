@@ -1,0 +1,211 @@
+---
+title: "@SecurityScheme"
+description: "Registers a named security scheme in the OpenAPI components section, supporting API key, HTTP, OAuth 2.0, OpenID Connect, and mutual TLS."
+---
+
+`io.swagger.v3.oas.annotations.security.SecurityScheme`
+
+Place `@SecurityScheme` on any class (typically a JAX-RS `Application` class or a dedicated configuration class) to add a named security scheme to the `components/securitySchemes` section of the generated OpenAPI document. The annotation is repeatable; use `@SecuritySchemes` to apply multiple schemes to the same class.
+
+Once defined, reference a scheme by name in `@SecurityRequirement` on operations or at the API level.
+
+## Elements
+
+<ParamField path="type" type="SecuritySchemeType" required>
+  The type of the security scheme. See [SecuritySchemeType values](#securityschemetype-enum) below. This element is required.
+</ParamField>
+
+<ParamField path="name" type="string" default='""'>
+  The name that identifies this security scheme within the OpenAPI document. Used as the key in `components/securitySchemes` and in `@SecurityRequirement(name = "...")`.
+</ParamField>
+
+<ParamField path="description" type="string" default='""'>
+  A short description of the security scheme. Supports CommonMark markdown.
+</ParamField>
+
+<ParamField path="paramName" type="string" default='""'>
+  The name of the header, query parameter, or cookie that carries the API key. Maps to the `name` field in the OAS Security Scheme object. Applies to `APIKEY` type only.
+</ParamField>
+
+<ParamField path="in" type="SecuritySchemeIn" default="SecuritySchemeIn.DEFAULT">
+  The location of the API key. Applies to `APIKEY` type only. See [SecuritySchemeIn values](#securityschemein-enum) below.
+</ParamField>
+
+<ParamField path="scheme" type="string" default='""'>
+  The name of the HTTP Authorization scheme as defined in RFC 7235 (e.g. `"basic"`, `"bearer"`, `"digest"`). Applies to `HTTP` type only.
+</ParamField>
+
+<ParamField path="bearerFormat" type="string" default='""'>
+  A hint to the client about the bearer token format (e.g. `"JWT"`). Informational only; does not affect validation. Applies to `HTTP` type with `scheme = "bearer"`.
+</ParamField>
+
+<ParamField path="flows" type="OAuthFlows" default="@OAuthFlows">
+  An object containing configuration for the supported OAuth 2.0 flow types (`implicit`, `password`, `clientCredentials`, `authorizationCode`). Required for `OAUTH2` type.
+</ParamField>
+
+<ParamField path="openIdConnectUrl" type="string" default='""'>
+  A URL pointing to the OpenID Connect discovery document from which OAuth 2.0 configuration values are obtained. Must be a valid URL. Required for `OPENIDCONNECT` type.
+</ParamField>
+
+<ParamField path="ref" type="string" default='""'>
+  A `$ref` pointer to a security scheme defined elsewhere in `components/securitySchemes`. When set, all other elements are ignored.
+
+  _Added in swagger-annotations 2.0.3._
+</ParamField>
+
+<ParamField path="extensions" type="Extension[]" default="{}">
+  Specification extensions (`x-*` fields) to add to this security scheme object.
+</ParamField>
+
+## SecuritySchemeType enum
+
+| Constant        | OAS value       | Description                                             |
+|-----------------|-----------------|---------------------------------------------------------|
+| `DEFAULT`       | _(empty)_       | No type; treated as unset by the reader.                |
+| `APIKEY`        | `apiKey`        | API key passed in a header, query parameter, or cookie. |
+| `HTTP`          | `http`          | HTTP authentication (Basic, Bearer, Digest, etc.).      |
+| `OAUTH2`        | `oauth2`        | OAuth 2.0 authorization flows.                          |
+| `OPENIDCONNECT` | `openIdConnect` | OpenID Connect discovery-based authentication.          |
+| `MUTUALTLS`     | `mutualTLS`     | Mutual TLS certificate-based authentication.            |
+
+## SecuritySchemeIn enum
+
+| Constant  | OAS value  | Description                                 |
+|-----------|-----------|---------------------------------------------|
+| `DEFAULT` | _(empty)_ | No location; treated as unset by the reader. |
+| `HEADER`  | `header`  | API key is sent as an HTTP request header.   |
+| `QUERY`   | `query`   | API key is appended to the URL query string. |
+| `COOKIE`  | `cookie`  | API key is passed as an HTTP cookie.         |
+
+## Usage examples
+
+### API key in a header
+
+```java
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeIn;
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
+import io.swagger.v3.oas.annotations.security.SecurityScheme;
+import jakarta.ws.rs.core.Application;
+
+@SecurityScheme(
+    name      = "ApiKeyAuth",
+    type      = SecuritySchemeType.APIKEY,
+    in        = SecuritySchemeIn.HEADER,
+    paramName = "X-API-Key"
+)
+public class MyApplication extends Application { }
+```
+
+### HTTP Bearer (JWT)
+
+```java
+@SecurityScheme(
+    name         = "BearerAuth",
+    type         = SecuritySchemeType.HTTP,
+    scheme       = "bearer",
+    bearerFormat = "JWT",
+    description  = "JWT issued by the identity provider. Include in the Authorization header."
+)
+public class MyApplication extends Application { }
+```
+
+### HTTP Basic authentication
+
+```java
+@SecurityScheme(
+    name   = "BasicAuth",
+    type   = SecuritySchemeType.HTTP,
+    scheme = "basic"
+)
+public class MyApplication extends Application { }
+```
+
+### OAuth 2.0 — authorization code flow
+
+```java
+import io.swagger.v3.oas.annotations.security.OAuthFlow;
+import io.swagger.v3.oas.annotations.security.OAuthFlows;
+import io.swagger.v3.oas.annotations.security.OAuthScope;
+
+@SecurityScheme(
+    name  = "petstore_auth",
+    type  = SecuritySchemeType.OAUTH2,
+    flows = @OAuthFlows(
+        authorizationCode = @OAuthFlow(
+            authorizationUrl = "https://example.com/oauth/authorize",
+            tokenUrl         = "https://example.com/oauth/token",
+            scopes           = {
+                @OAuthScope(name = "read:pets",  description = "Read pet data"),
+                @OAuthScope(name = "write:pets", description = "Modify pet data")
+            }
+        )
+    )
+)
+public class MyApplication extends Application { }
+```
+
+### OAuth 2.0 — client credentials flow
+
+```java
+@SecurityScheme(
+    name  = "clientCredentials",
+    type  = SecuritySchemeType.OAUTH2,
+    flows = @OAuthFlows(
+        clientCredentials = @OAuthFlow(
+            tokenUrl = "https://example.com/oauth/token",
+            scopes   = {
+                @OAuthScope(name = "api:read",  description = "Read access"),
+                @OAuthScope(name = "api:write", description = "Write access")
+            }
+        )
+    )
+)
+public class MyApplication extends Application { }
+```
+
+### OpenID Connect
+
+```java
+@SecurityScheme(
+    name             = "OpenIdConnect",
+    type             = SecuritySchemeType.OPENIDCONNECT,
+    openIdConnectUrl = "https://example.com/.well-known/openid-configuration"
+)
+public class MyApplication extends Application { }
+```
+
+### Multiple schemes on a single class
+
+```java
+import io.swagger.v3.oas.annotations.security.SecuritySchemes;
+
+@SecuritySchemes({
+    @SecurityScheme(
+        name      = "ApiKeyAuth",
+        type      = SecuritySchemeType.APIKEY,
+        in        = SecuritySchemeIn.HEADER,
+        paramName = "X-API-Key"
+    ),
+    @SecurityScheme(
+        name         = "BearerAuth",
+        type         = SecuritySchemeType.HTTP,
+        scheme       = "bearer",
+        bearerFormat = "JWT"
+    )
+})
+public class MyApplication extends Application { }
+```
+
+### Referencing a scheme from an operation
+
+```java
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+
+@GET
+@Path("/pets")
+@Operation(summary = "List pets")
+@SecurityRequirement(name = "BearerAuth")
+public List<Pet> listPets() {
+    return petService.listAll();
+}
+```

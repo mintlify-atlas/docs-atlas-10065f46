@@ -1,0 +1,417 @@
+---
+title: "Gradle plugin"
+description: "Generate OpenAPI specifications at build time using the swagger-gradle-plugin. Scans your JAX-RS or annotated classes and writes JSON or YAML output as part of the Gradle build lifecycle."
+---
+
+The `swagger-gradle-plugin` registers a `resolve` task that scans annotated resource classes and writes a JSON, YAML, or combined OpenAPI specification to an output directory. The plugin supports Gradle 3.2 and higher.
+
+## Applying the plugin
+
+<Steps>
+  <Step title="Add the plugin block">
+    In your `build.gradle`, declare the plugin using the plugins DSL:
+
+    ```groovy
+    plugins {
+      id 'io.swagger.core.v3.swagger-gradle-plugin' version '2.2.46'
+    }
+    ```
+
+    For Kotlin DSL (`build.gradle.kts`):
+
+    ```kotlin
+    plugins {
+      id("io.swagger.core.v3.swagger-gradle-plugin") version "2.2.46"
+    }
+    ```
+  </Step>
+
+  <Step title="Configure the resolve task">
+    The plugin registers a `resolve` task automatically. Configure it in your build script:
+
+    ```groovy
+    resolve {
+      outputDir         = file("${buildDir}/swagger")
+      outputFileName    = 'openapi'
+      outputFormat      = 'JSONANDYAML'
+      resourcePackages  = ['com.example.api']
+      prettyPrint       = true
+      classpath         = sourceSets.main.runtimeClasspath
+    }
+    ```
+  </Step>
+
+  <Step title="Run the task">
+    ```bash
+    ./gradlew resolve
+    ```
+
+    Output files are written to `outputDir` (defaults to `build/swagger/`).
+  </Step>
+</Steps>
+
+---
+
+## Plugin coordinates
+
+| Property | Value |
+|---|---|
+| Plugin ID | `io.swagger.core.v3.swagger-gradle-plugin` |
+| Group | `io.swagger.core.v3` |
+| Artifact | `swagger-gradle-plugin` |
+| Plugin Portal | [plugins.gradle.org](https://plugins.gradle.org/plugin/io.swagger.core.v3.swagger-gradle-plugin) |
+
+---
+
+## Task: `resolve`
+
+The `resolve` task is a `@CacheableTask`. Gradle incremental build support is enabled out of the box — the task is skipped when inputs have not changed.
+
+### Output properties
+
+<ParamField path="outputDir" type="DirectoryProperty" required>
+  Output directory where the generated file(s) are written. Defaults to `$buildDir/swagger`.
+
+  ```groovy
+  outputDir = file("${buildDir}/swagger")
+  ```
+</ParamField>
+
+<ParamField path="outputFileName" type="Property&lt;String&gt;" default="openapi">
+  Base file name without extension. Produces `openapi.json`, `openapi.yaml`, or both depending on `outputFormat`.
+</ParamField>
+
+<ParamField path="outputFormat" type="Property&lt;Format&gt;" default="JSON">
+  Output format. Accepted values: `JSON`, `YAML`, `JSONANDYAML`.
+
+  ```groovy
+  outputFormat = 'JSONANDYAML'
+  ```
+</ParamField>
+
+<ParamField path="encoding" type="Property&lt;String&gt;" default="UTF-8">
+  Character encoding of the output file(s).
+</ParamField>
+
+<ParamField path="prettyPrint" type="Property&lt;Boolean&gt;" default="false">
+  When `true`, the output JSON or YAML is formatted with indentation.
+</ParamField>
+
+<ParamField path="sortOutput" type="Property&lt;Boolean&gt;" default="false">
+  When `true`, object properties and map keys in the output are sorted alphabetically. Available since 2.1.6.
+</ParamField>
+
+### Classpath properties
+
+<ParamField path="classpath" type="ConfigurableFileCollection" required>
+  Classpath used to discover annotated resource classes. Typically set to `sourceSets.main.runtimeClasspath`.
+
+  ```groovy
+  classpath = sourceSets.main.runtimeClasspath
+  ```
+</ParamField>
+
+<ParamField path="buildClasspath" type="ConfigurableFileCollection">
+  Additional classpath entries for Swagger's own runtime dependencies (swagger-jaxrs2 and friends). The plugin populates this automatically with `javax` namespace artifacts. Override it to use Jakarta namespace artifacts:
+
+  ```groovy
+  // Use the Jakarta namespace instead of javax
+  buildClasspath = classpath
+  ```
+</ParamField>
+
+### Resource scanning
+
+<ParamField path="resourcePackages" type="SetProperty&lt;String&gt;">
+  Set of package names to scan for JAX-RS resources and OpenAPI annotations.
+
+  ```groovy
+  resourcePackages = ['com.example.api', 'com.example.admin']
+  ```
+</ParamField>
+
+<ParamField path="resourceClasses" type="SetProperty&lt;String&gt;">
+  Set of fully-qualified class names to treat as explicit resource roots.
+
+  ```groovy
+  resourceClasses = ['com.example.api.PetResource']
+  ```
+</ParamField>
+
+<ParamField path="readAllResources" type="Property&lt;Boolean&gt;" default="true">
+  When `true`, all resources discovered on the classpath are read, not only those listed in `resourcePackages` or `resourceClasses`.
+</ParamField>
+
+<ParamField path="ignoredRoutes" type="SetProperty&lt;String&gt;">
+  Route path prefixes to exclude from the resolved specification.
+
+  ```groovy
+  ignoredRoutes = ['/internal', '/actuator']
+  ```
+</ParamField>
+
+### Input file
+
+<ParamField path="openApiFile" type="RegularFileProperty">
+  Path to a base OpenAPI file in JSON or YAML format. Its contents are merged with the resolved specification. Typically used to supply `info`, `servers`, or `security` metadata.
+
+  ```groovy
+  openApiFile = file('src/main/resources/openapi-base.yaml')
+  ```
+</ParamField>
+
+### Extension points
+
+<ParamField path="filterClass" type="Property&lt;String&gt;">
+  Fully-qualified class name of an `OpenAPISpecFilter` implementation applied after scanning.
+</ParamField>
+
+<ParamField path="readerClass" type="Property&lt;String&gt;">
+  Fully-qualified class name of a custom `OpenApiReader` implementation.
+</ParamField>
+
+<ParamField path="scannerClass" type="Property&lt;String&gt;">
+  Fully-qualified class name of a custom `OpenApiScanner` implementation.
+</ParamField>
+
+<ParamField path="objectMapperProcessorClass" type="Property&lt;String&gt;">
+  Fully-qualified class name of a custom `ObjectMapperProcessor` that configures the Jackson `ObjectMapper` used for serialization. Available since 2.0.6.
+</ParamField>
+
+<ParamField path="modelConverterClasses" type="SetProperty&lt;String&gt;">
+  Ordered set of fully-qualified `ModelConverter` class names applied during schema resolution.
+
+  ```groovy
+  modelConverterClasses = ['com.example.MyModelConverter']
+  ```
+</ParamField>
+
+<ParamField path="validatorProcessorClass" type="Property&lt;String&gt;">
+  Fully-qualified class name of a custom `ValidatorProcessor` (`io.swagger.v3.core.util.ValidatorProcessor`). Available since 2.2.29.
+</ParamField>
+
+<ParamField path="contextId" type="Property&lt;String&gt;">
+  Identifier for the OpenAPI context. Useful when multiple contexts exist in the same JVM. Available since 2.0.6.
+</ParamField>
+
+### Application path
+
+<ParamField path="alwaysResolveAppPath" type="Property&lt;Boolean&gt;" default="false">
+  When `true`, resolves the `@ApplicationPath` from annotations even outside a running servlet container. Available since 2.1.9.
+</ParamField>
+
+<ParamField path="skipResolveAppPath" type="Property&lt;Boolean&gt;" default="false">
+  When `true`, skips resolving the `@ApplicationPath` annotation entirely. Available since 2.1.15.
+</ParamField>
+
+### Response handling
+
+<ParamField path="defaultResponseCode" type="Property&lt;String&gt;">
+  HTTP status code used when resolving operations with no explicit status code annotation. Available since 2.2.17.
+</ParamField>
+
+<ParamField path="groupsValidationStrategy" type="Property&lt;String&gt;">
+  Strategy for processing Bean Validation `groups`. Accepted values: `never`, `always`, `neverIfNoContext`. Available since 2.2.29.
+</ParamField>
+
+### OpenAPI version
+
+<ParamField path="openAPI31" type="Property&lt;Boolean&gt;" default="false">
+  When `true`, the resolved spec is processed according to OpenAPI 3.1 rules. Available since 2.2.0.
+
+  <Warning>
+    Setting `convertToOpenAPI31 = true` while explicitly setting `openAPI31 = false` throws a `GradleException`.
+  </Warning>
+</ParamField>
+
+<ParamField path="convertToOpenAPI31" type="Property&lt;Boolean&gt;" default="false">
+  When `true`, the resolved 3.0 spec is automatically converted to 3.1 format. Implicitly sets `openAPI31 = true`. Available since 2.2.12.
+</ParamField>
+
+<ParamField path="openAPIVersion" type="Property&lt;String&gt;">
+  Explicit OpenAPI version string written into the output (e.g. `3.0.1` or `3.1.0`). Available since 2.2.28.
+</ParamField>
+
+<ParamField path="schemaResolution" type="Property&lt;String&gt;">
+  Controls how object schemas and their properties are resolved for OAS 3.0. Values correspond to the `Schema.SchemaResolution` enum. Available since 2.2.24.
+</ParamField>
+
+### Execution control
+
+<ParamField path="skip" type="Property&lt;Boolean&gt;" default="false" deprecated>
+  When `true`, the task logs a warning and returns immediately without generating output. **Deprecated** — prefer disabling the task dependency or not running the task at all.
+</ParamField>
+
+---
+
+## Build lifecycle integration
+
+By default the `resolve` task has no dependency on `compileJava`. Wire it explicitly so that compiled classes are on the classpath before scanning:
+
+```groovy
+resolve.dependsOn compileJava
+```
+
+To generate the spec as part of every build, make it a dependency of another lifecycle task:
+
+```groovy
+// Run resolve before jar is assembled
+jar.dependsOn resolve
+```
+
+Or wire it into the `build` lifecycle directly:
+
+```groovy
+build.dependsOn resolve
+```
+
+---
+
+## Examples
+
+### Minimal configuration
+
+```groovy
+plugins {
+  id 'java'
+  id 'io.swagger.core.v3.swagger-gradle-plugin' version '2.2.46'
+}
+
+resolve {
+  classpath       = sourceSets.main.runtimeClasspath
+  outputDir       = file("${buildDir}/swagger")
+  resourcePackages = ['com.example.api']
+}
+
+resolve.dependsOn compileJava
+```
+
+### Full configuration — JSON and YAML output
+
+```groovy
+plugins {
+  id 'java'
+  id 'io.swagger.core.v3.swagger-gradle-plugin' version '2.2.46'
+}
+
+resolve {
+  // Output
+  outputDir          = file("${buildDir}/swagger")
+  outputFileName     = 'openapi'
+  outputFormat       = 'JSONANDYAML'
+  encoding           = 'UTF-8'
+  prettyPrint        = true
+  sortOutput         = false
+
+  // Classpath
+  classpath          = sourceSets.main.runtimeClasspath
+
+  // Resource scanning
+  resourcePackages   = ['com.example.api', 'com.example.admin']
+  resourceClasses    = ['com.example.api.HealthResource']
+  readAllResources   = true
+  ignoredRoutes      = ['/internal']
+
+  // Input file (merged into resolved spec)
+  openApiFile        = file('src/main/resources/openapi-base.yaml')
+
+  // Extension points
+  filterClass              = 'com.example.MyOpenAPIFilter'
+  readerClass              = 'com.example.MyOpenApiReader'
+  scannerClass             = 'com.example.MyOpenApiScanner'
+  objectMapperProcessorClass = 'com.example.MyObjectMapperProcessor'
+  modelConverterClasses    = ['com.example.MyModelConverter']
+
+  // Application path
+  alwaysResolveAppPath = false
+  skipResolveAppPath   = false
+
+  // Response handling
+  defaultResponseCode       = '200'
+  groupsValidationStrategy  = 'never'
+
+  // OpenAPI version
+  openAPI31          = false
+  convertToOpenAPI31 = false
+  openAPIVersion     = '3.0.1'
+  schemaResolution   = 'DEFAULT'
+}
+
+resolve.dependsOn compileJava
+jar.dependsOn resolve
+```
+
+### OpenAPI 3.1 output
+
+```groovy
+resolve {
+  classpath        = sourceSets.main.runtimeClasspath
+  outputDir        = file("${buildDir}/swagger")
+  resourcePackages = ['com.example.api']
+  openAPI31        = true
+  outputFormat     = 'YAML'
+}
+
+resolve.dependsOn compileJava
+```
+
+### Jakarta namespace support
+
+The plugin ships with `javax` namespace dependencies by default. To use `jakarta` namespace artifacts, override `buildClasspath`:
+
+```groovy
+resolve {
+  classpath      = sourceSets.main.runtimeClasspath
+  // Use the project's own classpath which already contains jakarta artifacts
+  buildClasspath = classpath
+  outputDir      = file("${buildDir}/swagger")
+  resourcePackages = ['com.example.api']
+}
+```
+
+Alternatively, assemble the Jakarta classpath explicitly:
+
+```groovy
+configurations {
+  swaggerJakarta
+}
+
+dependencies {
+  swaggerJakarta 'org.apache.commons:commons-lang3:3.20.0'
+  swaggerJakarta 'io.swagger.core.v3:swagger-jaxrs2-jakarta:2.2.46'
+  swaggerJakarta 'jakarta.ws.rs:jakarta.ws.rs-api:3.0.0'
+  swaggerJakarta 'jakarta.servlet:jakarta.servlet-api:5.0.0'
+}
+
+resolve {
+  classpath      = sourceSets.main.runtimeClasspath
+  buildClasspath = configurations.swaggerJakarta
+  outputDir      = file("${buildDir}/swagger")
+  resourcePackages = ['com.example.api']
+}
+```
+
+### Base OpenAPI file (`openapi-base.yaml`)
+
+Use `openApiFile` to supply metadata that cannot be derived from annotations. The file is merged with the resolved spec:
+
+```yaml
+openapi: "3.0.4"
+info:
+  title: Pet Store API
+  version: "1.0.0"
+  description: >
+    Sample Pet Store API demonstrating the swagger-gradle-plugin.
+  termsOfService: https://example.com/terms
+  contact:
+    email: apiteam@example.com
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+servers:
+  - url: https://api.example.com/v1
+```
+
+<Note>
+  `openApiFile` is the Gradle equivalent of the Maven plugin's `openapiFilePath` parameter. Both accept JSON or YAML files that are deserialized and merged with the resolved specification.
+</Note>

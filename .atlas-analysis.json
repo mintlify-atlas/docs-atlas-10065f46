@@ -1,28 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "Swagger Core",
+  "projectType": "sdk-library",
+  "projectName": "Swagger Core",
+  "projectDescription": "A Java library implementing the OpenAPI Specification that generates OpenAPI 3.x documents from JAX-RS annotations and Java models.",
   "theme": "luma",
-  "colors": {
-    "primary": "#7ee02e",
-    "light": "#204543",
-    "dark": "#44843c"
-  },
-  "favicon": "https://media.brand.dev/f5c4bc88-101d-4bdb-8126-c3576241a309.png",
-  "logo": {
-    "light": "https://media.brand.dev/ea7d8ec5-f566-40ab-916e-34f3eb4282c8.svg",
-    "dark": "https://media.brand.dev/ea7d8ec5-f566-40ab-916e-34f3eb4282c8.svg"
-  },
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/swagger-api/swagger-core"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/swagger-api/swagger-core"
-    }
-  },
+  "primaryColor": "#7ee02e",
+  "lightColor": "#204543",
+  "darkColor": "#44843c",
   "navigation": {
     "tabs": [
       {
@@ -112,5 +95,46 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "OpenAPI 3.0 and 3.1 specification support",
+    "JAX-RS 2.x annotation scanning (javax and jakarta namespaces)",
+    "Rich set of Java annotations for documenting REST APIs",
+    "Maven and Gradle build plugins for spec generation at build time",
+    "Extensible ModelConverter SPI for custom type resolution",
+    "OpenAPISpecFilter SPI for post-processing and filtering the generated spec",
+    "Servlet integration for serving the OpenAPI document at runtime",
+    "Jackson-based JSON/YAML serialization of OpenAPI models"
+  ],
+  "publicApiSurface": [
+    "@Operation",
+    "@Parameter",
+    "@Parameters",
+    "@ApiResponse",
+    "@ApiResponses",
+    "@Schema",
+    "@ArraySchema",
+    "@Content",
+    "@RequestBody",
+    "@SecurityScheme",
+    "@SecurityRequirement",
+    "@OpenAPIDefinition",
+    "@Tag",
+    "@Server",
+    "@Callback",
+    "@Hidden",
+    "@Webhook",
+    "SwaggerConfiguration",
+    "OpenAPIConfiguration",
+    "GenericOpenApiContext",
+    "JaxrsOpenApiContextBuilder",
+    "ModelConverters",
+    "ModelConverter",
+    "OpenAPISpecFilter",
+    "SpecFilter",
+    "Reader (JAX-RS)",
+    "OpenApiResource (JAX-RS endpoint)",
+    "SwaggerMojo (Maven plugin)",
+    "ResolveTask (Gradle plugin)"
+  ]
 }

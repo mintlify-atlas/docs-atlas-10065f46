@@ -1,0 +1,234 @@
+---
+title: "How annotation scanning works"
+description: "The end-to-end lifecycle of Swagger Core's annotation scanner: package discovery, class reflection, annotation extraction, and OpenAPI model construction."
+---
+
+Swagger Core generates an OpenAPI document by inspecting your Java classes at runtime (or build time). The process has four distinct phases:
+
+<Steps>
+  <Step title="Package / class discovery">
+    `GenericOpenApiContext.read()` asks the configured `OpenApiScanner` for the set of classes to inspect. The default scanner (`GenericOpenApiScanner`) uses [ClassGraph](https://github.com/classgraph/classgraph) to scan the classpath and return all classes found in the packages listed in `resourcePackages`, plus any classes listed explicitly in `resourceClasses`. If neither is set and no external configuration file is found, an empty set is returned and only a bare `OpenAPI` object is produced.
+  </Step>
+  <Step title="ReaderListener notification (before)">
+    Before processing any class, the `Reader` finds every class in the discovered set that implements `ReaderListener` and calls `listener.beforeScan(reader, openAPI)` on each. This lets you pre-populate the `OpenAPI` object (add servers, security schemes, tags, etc.) before any scanning output is merged in.
+  </Step>
+  <Step title="Annotation extraction">
+    For each class, `Reader.read(Class<?>)` uses reflection to:
+
+    1. Check for `@Hidden` — if present the entire class is skipped.
+    2. Read `@OpenAPIDefinition` to populate top-level `info`, `servers`, `tags`, and `security`.
+    3. Collect constructor- and field-level `@Parameter` annotations as global parameters.
+    4. Iterate all public methods (sorted for deterministic output) and for each method:
+       - Skip if the method carries `@Hidden` (via `isOperationHidden()`).
+       - Combine the class-level `@Path` with the method-level `@Path` to compute the effective operation path.
+       - Extract the HTTP verb from JAX-RS annotations (`@GET`, `@POST`, `@PUT`, `@DELETE`, `@PATCH`, `@HEAD`, `@OPTIONS`, `@TRACE`).
+       - Call `parseMethod()` to merge `@Operation`, `@Parameter`, `@RequestBody`, `@ApiResponse`, `@Tag`, `@Server`, `@SecurityRequirement`, `@ExternalDocumentation` into an `Operation` object.
+       - Resolve the method return type through `ModelConverters` to infer the default response schema.
+  </Step>
+  <Step title="OpenAPI model construction">
+    Each resolved `Operation` is attached to the appropriate `PathItem` in the growing `Paths` map. Referenced schemas accumulate in `components/schemas`. After all classes are processed `ReaderListener.afterScan()` is called, giving listeners a final opportunity to modify the completed model.
+  </Step>
+</Steps>
+
+## Configuration reference
+
+### `resourcePackages`
+
+A `Set<String>` of fully-qualified package names. The scanner finds all classes in these packages (and sub-packages). At least one of `resourcePackages` or `resourceClasses` must be set unless you provide a pre-built `OpenAPI` object in `SwaggerConfiguration`.
+
+```java
+new SwaggerConfiguration()
+    .resourcePackages(Set.of(
+        "com.example.api.resources",
+        "com.example.api.webhooks"
+    ));
+```
+
+Source: `SwaggerConfiguration.resourcePackages` field, type `Set<String>`.
+
+### `resourceClasses`
+
+A `Set<String>` of fully-qualified class names. Use this to target specific classes without scanning an entire package, or to include classes in packages you do not own.
+
+```java
+new SwaggerConfiguration()
+    .resourceClasses(Set.of(
+        "com.example.api.resources.PetResource",
+        "com.example.api.resources.UserResource"
+    ));
+```
+
+Source: `SwaggerConfiguration.resourceClasses` field, type `Set<String>`.
+
+### `readAllResources`
+
+Type: `Boolean`. Default: `true`.
+
+When `true`, the `Reader` processes every JAX-RS method that carries an HTTP verb annotation, regardless of whether the method also has an `@Operation` annotation. This is the default and is the recommended setting because it means you only need to add `@Operation` when you want to customise the generated operation — basic operations are inferred automatically.
+
+Set to `false` to restrict scanning to methods that are explicitly annotated with `@Operation`. Methods without `@Operation` are silently ignored.
+
+```java
+new SwaggerConfiguration()
+    .readAllResources(false)   // only include @Operation-annotated methods
+    .resourcePackages(Set.of("com.example.api"));
+```
+
+Source: `SwaggerConfiguration.readAllResources`, initialised to `Boolean.TRUE`.
+
+## Suppressing endpoints with `@Hidden`
+
+Annotate a class or method with `@Hidden` to exclude it from the generated spec entirely.
+
+```java
+import io.swagger.v3.oas.annotations.Hidden;
+
+@Path("/internal")
+@Hidden   // entire class is excluded
+public class InternalAdminResource {
+
+    @GET
+    @Path("/metrics")
+    public MetricsResponse metrics() { ... }
+}
+```
+
+```java
+@Path("/pets")
+public class PetResource {
+
+    @GET
+    @Path("/{id}")
+    public Pet get(@PathParam("id") Long id) { ... }
+
+    @GET
+    @Path("/debug")
+    @Hidden   // this method is excluded; other methods in the class are still scanned
+    public DebugInfo debug() { ... }
+}
+```
+
+The `Reader` checks for `@Hidden` at the class level before iterating methods (`Reader.read(Class<?>)`, line 287–304), and calls `isOperationHidden(method)` for each method before parsing it (line 439).
+
+## The ReaderListener extension point
+
+`ReaderListener` (`io.swagger.v3.jaxrs2.ReaderListener`) is an interface with two methods:
+
+```java
+public interface ReaderListener {
+
+    /**
+     * Called before the OpenAPI definition gets populated from scanned classes.
+     */
+    void beforeScan(OpenApiReader reader, OpenAPI openAPI);
+
+    /**
+     * Called after a OpenAPI definition has been populated from scanned classes.
+     */
+    void afterScan(OpenApiReader reader, OpenAPI openAPI);
+}
+```
+
+Any class in the scanned set that implements `ReaderListener` is automatically discovered and instantiated via `newInstance()`. You do not need to register it explicitly.
+
+```java
+import io.swagger.v3.jaxrs2.ReaderListener;
+import io.swagger.v3.oas.integration.api.OpenApiReader;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Info;
+
+public class ApiInfoCustomizer implements ReaderListener {
+
+    @Override
+    public void beforeScan(OpenApiReader reader, OpenAPI openAPI) {
+        // runs before any class is scanned; useful for seeding the model
+    }
+
+    @Override
+    public void afterScan(OpenApiReader reader, OpenAPI openAPI) {
+        // override generated info after scanning completes
+        openAPI.setInfo(new Info()
+            .title("Pet Store API")
+            .version("2.0.0")
+            .description("Managed by ReaderListener"));
+    }
+}
+```
+
+Place `ApiInfoCustomizer` in one of your `resourcePackages` — the `Reader` will discover it automatically.
+
+## Full configuration example
+
+```java
+import io.swagger.v3.oas.integration.SwaggerConfiguration;
+import io.swagger.v3.oas.integration.OpenApiContextLocator;
+import io.swagger.v3.oas.integration.api.OpenApiContext;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Info;
+
+import java.util.Set;
+
+public class OpenApiSetup {
+
+    public static OpenAPI buildSpec() throws Exception {
+        OpenAPI base = new OpenAPI()
+            .info(new Info()
+                .title("Pet Store API")
+                .version("1.0.0"));
+
+        SwaggerConfiguration config = new SwaggerConfiguration()
+            .openAPI(base)
+            .resourcePackages(Set.of("com.example.api.resources"))
+            .readAllResources(true)   // include all JAX-RS methods
+            .prettyPrint(true);
+
+        OpenApiContext context = new io.swagger.v3.oas.integration.GenericOpenApiContextBuilder()
+            .openApiConfiguration(config)
+            .buildContext(true);
+
+        return context.read();
+    }
+}
+```
+
+## How Reader combines JAX-RS and Swagger annotations
+
+The `Reader` treats JAX-RS annotations as the authoritative source of truth for path and HTTP verb, then overlays any `@Operation` annotation data on top. The merge order for each field is:
+
+1. Inferred value from JAX-RS (`@Path`, `@GET`, `@Produces`, `@Consumes`).
+2. Class-level Swagger annotations (`@Tag`, `@SecurityRequirement`, `@Server`, `@ApiResponse`).
+3. Method-level `@Operation` fields (`summary`, `description`, `operationId`, `hidden`, `tags`, `security`, `servers`, `responses`).
+
+```java
+@Path("/pets")
+@Tag(name = "pets")                 // applied to all operations in this class
+public class PetResource {
+
+    @GET
+    @Path("/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Operation(
+        summary     = "Find pet by ID",
+        description = "Returns a single pet",
+        operationId = "getPetById"
+    )
+    @ApiResponse(responseCode = "404", description = "Pet not found")
+    public Pet getPet(@PathParam("id") @Parameter(description = "Pet ID") Long id) {
+        ...
+    }
+
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    // No @Operation — included because readAllResources defaults to true.
+    // operationId is derived from the method name: "addPet"
+    public Response addPet(Pet pet) {
+        ...
+    }
+}
+```
+
+In the example above, the `GET /pets/{id}` operation is fully described by the combination of `@Path`, `@GET`, `@Produces`, `@Tag` (from class), and `@Operation` + `@ApiResponse` (from method). The `POST /pets` operation is included automatically because `readAllResources` is `true`, with the operationId derived from the method name.
+
+<Warning>
+If you set `readAllResources = false`, the `POST /pets` method in the example above will not appear in the generated spec because it has no `@Operation` annotation.
+</Warning>

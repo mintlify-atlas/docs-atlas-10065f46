@@ -1,0 +1,417 @@
+---
+title: "Schema annotations"
+description: "Reference for @Schema, @ArraySchema, @Content, @ExampleObject, and @DiscriminatorMapping — the annotations that describe data shapes in Swagger Core."
+---
+
+Schema annotations tell Swagger Core how to represent your Java types in the `components/schemas` section of the OpenAPI document. You can annotate model classes, individual fields, method return types, and method parameters.
+
+## @Schema
+
+`io.swagger.v3.oas.annotations.media.Schema`
+
+The primary annotation for describing a schema object. Use it on a class, field, method, or method parameter. When placed on a class it describes the whole model; on a field it refines or overrides that property's schema.
+
+Targets: `FIELD`, `METHOD`, `PARAMETER`, `TYPE`, `ANNOTATION_TYPE`.
+
+<Note>
+`@ArraySchema` and `@Schema` are mutually exclusive on the same element. Use `@ArraySchema` when the element is a collection.
+</Note>
+
+### Key fields
+
+```java
+public @interface Schema {
+    Class<?>             implementation()       default Void.class;
+    Class<?>             not()                  default Void.class;
+    Class<?>[]           oneOf()                default {};
+    Class<?>[]           anyOf()                default {};
+    Class<?>[]           allOf()                default {};
+    String               name()                 default "";
+    String               title()                default "";
+    String               description()          default "";
+    String               type()                 default "";
+    String               format()               default "";
+    String               ref()                  default "";
+    boolean              nullable()             default false;
+    AccessMode           accessMode()           default AccessMode.AUTO;
+    String               example()              default "";
+    ExternalDocumentation externalDocs()        default @ExternalDocumentation();
+    boolean              deprecated()           default false;
+    String[]             allowableValues()      default {};
+    String               defaultValue()         default "##default";
+    String               discriminatorProperty() default "";
+    DiscriminatorMapping[] discriminatorMapping() default {};
+    boolean              hidden()               default false;
+    boolean              enumAsRef()            default false;
+    Class<?>[]           subTypes()             default {};
+    RequiredMode         requiredMode()         default RequiredMode.AUTO;
+    String[]             requiredProperties()   default {};
+    String               maximum()              default "";
+    boolean              exclusiveMaximum()     default false;
+    String               minimum()              default "";
+    boolean              exclusiveMinimum()     default false;
+    int                  maxLength()            default Integer.MAX_VALUE;
+    int                  minLength()            default 0;
+    String               pattern()              default "";
+    double               multipleOf()           default 0;
+    int                  maxProperties()        default 0;
+    int                  minProperties()        default 0;
+    Extension[]          extensions()           default {};
+}
+```
+
+### Field descriptions
+
+| Field | Description |
+|---|---|
+| `implementation` | Substitute Java class used to derive this schema, overriding the annotated element's type. |
+| `oneOf` | Array of classes; exactly one must match (JSON Schema `oneOf`). |
+| `anyOf` | Array of classes; one or more must match (JSON Schema `anyOf`). |
+| `allOf` | Array of classes; all must match (JSON Schema `allOf`). |
+| `not` | Class whose schema the value must **not** match. |
+| `name` | Override the property or schema name. |
+| `type` | OpenAPI primitive type string: `"string"`, `"integer"`, `"number"`, `"boolean"`, `"object"`, `"array"`. |
+| `format` | Type format hint: `"int32"`, `"int64"`, `"float"`, `"double"`, `"date"`, `"date-time"`, `"uuid"`, `"password"`, etc. |
+| `description` | Human-readable description of this schema or property. |
+| `example` | Inline example value as a string. |
+| `defaultValue` | Default value for the property. |
+| `allowableValues` | Restricts the value to an enumerated set (maps to `enum` in OpenAPI). |
+| `required` | Deprecated. Use `requiredMode` instead. |
+| `requiredMode` | `AUTO` (heuristic), `REQUIRED`, or `NOT_REQUIRED`. |
+| `requiredProperties` | Names of properties that must be present when used on an object schema. |
+| `nullable` | Whether the value may be `null`. |
+| `accessMode` | `READ_ONLY`, `WRITE_ONLY`, or `READ_WRITE`. |
+| `hidden` | Excludes this property from the schema. |
+| `enumAsRef` | Resolves enum types as `$ref` entries in `components/schemas`. |
+| `discriminatorProperty` | Property name used as the polymorphism discriminator. |
+| `discriminatorMapping` | Maps discriminator values to concrete schema classes. |
+| `ref` | Direct `$ref` to a schema defined in `components/schemas`. |
+| `maxLength` / `minLength` | String length constraints. |
+| `maximum` / `minimum` | Numeric range constraints. |
+| `exclusiveMaximum` / `exclusiveMinimum` | When `true`, converts `<=`/`>=` to `<`/`>`. |
+| `pattern` | Regular expression the string value must satisfy. |
+| `multipleOf` | The value must be a multiple of this number. |
+
+### Annotating a model class
+
+```java
+import io.swagger.v3.oas.annotations.media.Schema;
+
+@Schema(
+    description      = "Represents an order placed by a customer.",
+    requiredProperties = {"id", "customerId", "status"}
+)
+public class Order {
+
+    @Schema(
+        description = "Unique order identifier",
+        format      = "uuid",
+        accessMode  = Schema.AccessMode.READ_ONLY,
+        example     = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+    )
+    private String id;
+
+    @Schema(description = "ID of the customer who placed the order", requiredMode = Schema.RequiredMode.REQUIRED)
+    private String customerId;
+
+    @Schema(
+        description     = "Current order status",
+        allowableValues = {"PENDING", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"},
+        defaultValue    = "PENDING"
+    )
+    private String status;
+
+    @Schema(
+        description = "Total order amount",
+        type        = "number",
+        format      = "double",
+        minimum     = "0",
+        example     = "49.99"
+    )
+    private Double totalAmount;
+
+    @Schema(
+        description = "Internal audit notes — hidden from external consumers",
+        hidden      = true
+    )
+    private String auditNotes;
+
+    // getters / setters omitted
+}
+```
+
+---
+
+## @ArraySchema
+
+`io.swagger.v3.oas.annotations.media.ArraySchema`
+
+Describes a schema of type `array`. Use it instead of `@Schema` whenever the annotated element is a Java collection or array type.
+
+Targets: `FIELD`, `METHOD`, `PARAMETER`, `TYPE`, `ANNOTATION_TYPE`.
+
+```java
+public @interface ArraySchema {
+    Schema    schema()      default @Schema;    // item schema
+    Schema    arraySchema() default @Schema;    // properties of the array itself
+    int       maxItems()    default Integer.MIN_VALUE;
+    int       minItems()    default Integer.MAX_VALUE;
+    boolean   uniqueItems() default false;
+    Extension[] extensions() default {};
+}
+```
+
+| Field | Description |
+|---|---|
+| `schema` | Schema of each element in the array. |
+| `arraySchema` | Schema properties applied to the array container itself (e.g. `description`). |
+| `maxItems` | Maximum number of items allowed. |
+| `minItems` | Minimum number of items required. |
+| `uniqueItems` | When `true`, all items must be distinct. |
+
+```java
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+public class ProductCatalogue {
+
+    @ArraySchema(
+        schema      = @Schema(implementation = Tag.class),
+        minItems    = 1,
+        maxItems    = 20,
+        uniqueItems = true,
+        arraySchema = @Schema(description = "Tags associated with this catalogue entry")
+    )
+    private List<Tag> tags;
+}
+```
+
+On a resource method returning a collection:
+
+```java
+@GET
+@Path("/orders")
+@Operation(summary = "List orders")
+@ApiResponse(
+    responseCode = "200",
+    description  = "List of orders",
+    content      = @Content(
+        mediaType = MediaType.APPLICATION_JSON,
+        array     = @ArraySchema(schema = @Schema(implementation = Order.class))
+    )
+)
+public List<Order> listOrders() { /* ... */ }
+```
+
+---
+
+## @Content
+
+`io.swagger.v3.oas.annotations.media.Content`
+
+Pairs a media type string with a schema and optional examples. Used inside `@RequestBody#content()`, `@ApiResponse#content()`, and `@Parameter#content()`.
+
+Targets: `ANNOTATION_TYPE` only (always nested, never placed directly on source elements).
+
+```java
+public @interface Content {
+    String          mediaType()                   default "";
+    ExampleObject[] examples()                    default {};
+    Schema          schema()                      default @Schema();
+    SchemaProperty[] schemaProperties()           default {};
+    Schema          additionalPropertiesSchema()  default @Schema();
+    ArraySchema     array()                       default @ArraySchema();
+    Encoding[]      encoding()                    default {};
+    Extension[]     extensions()                  default {};
+}
+```
+
+| Field | Description |
+|---|---|
+| `mediaType` | MIME type string, e.g. `"application/json"` or `"multipart/form-data"`. |
+| `schema` | Schema of the content. |
+| `array` | Use instead of `schema` when the content is an array. |
+| `examples` | Named example objects shown alongside the schema. |
+| `schemaProperties` | Inline property definitions for the schema defined in `schema`. |
+| `additionalPropertiesSchema` | Schema for additional (free-form) properties. |
+| `encoding` | Encoding rules for individual properties in `multipart` or `application/x-www-form-urlencoded` bodies. |
+
+```java
+@POST
+@Path("/reports")
+@Operation(summary = "Upload a report file")
+@ApiResponse(
+    responseCode = "200",
+    description  = "Uploaded report metadata",
+    content      = {
+        @Content(
+            mediaType = MediaType.APPLICATION_JSON,
+            schema    = @Schema(implementation = ReportMetadata.class),
+            examples  = @ExampleObject(
+                name    = "csv-report",
+                summary = "CSV report upload response",
+                value   = "{\"id\":\"abc123\",\"filename\":\"q1-report.csv\"}"
+            )
+        ),
+        @Content(mediaType = "application/xml", schema = @Schema(implementation = ReportMetadata.class))
+    }
+)
+public ReportMetadata uploadReport(InputStream stream) { /* ... */ }
+```
+
+---
+
+## @ExampleObject
+
+`io.swagger.v3.oas.annotations.media.ExampleObject`
+
+Defines a named, reusable example for a parameter or content object. Used inside `@Content#examples()` and `@Parameter#examples()`.
+
+```java
+public @interface ExampleObject {
+    String      name()          default "";
+    String      summary()       default "";
+    String      description()   default "";
+    String      value()         default "";
+    String      externalValue() default "";
+    Extension[] extensions()    default {};
+    String      ref()           default "";
+}
+```
+
+| Field | Description |
+|---|---|
+| `name` | Unique key for this example within the `examples` map. |
+| `summary` | One-line summary shown in UI tools. |
+| `description` | Longer description of the example context. |
+| `value` | Literal string representation of the example. For JSON content, provide a JSON string. |
+| `externalValue` | URL to an external file containing the example. Mutually exclusive with `value`. |
+| `ref` | `$ref` to an example defined in `components/examples`. |
+
+```java
+@Parameter(
+    name     = "status",
+    in       = ParameterIn.QUERY,
+    examples = {
+        @ExampleObject(name = "pending",   value = "PENDING",   summary = "Pending orders"),
+        @ExampleObject(name = "delivered", value = "DELIVERED", summary = "Delivered orders")
+    }
+)
+@QueryParam("status") String status
+```
+
+---
+
+## @DiscriminatorMapping
+
+`io.swagger.v3.oas.annotations.media.DiscriminatorMapping`
+
+Maps a specific discriminator property value to a concrete schema class. Used in `@Schema#discriminatorMapping()` alongside `@Schema#discriminatorProperty()`.
+
+```java
+public @interface DiscriminatorMapping {
+    String   value()  default "";          // discriminator property value
+    Class<?> schema() default Void.class;  // concrete class this value maps to
+}
+```
+
+---
+
+## Polymorphism with oneOf and a discriminator
+
+The following example models a `Payment` base schema with two concrete subtypes selected via a `type` discriminator field.
+
+```java
+import io.swagger.v3.oas.annotations.media.DiscriminatorMapping;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+@Schema(
+    description           = "A payment in one of the supported forms.",
+    oneOf                 = {CardPayment.class, BankTransfer.class},
+    discriminatorProperty = "type",
+    discriminatorMapping  = {
+        @DiscriminatorMapping(value = "card",         schema = CardPayment.class),
+        @DiscriminatorMapping(value = "bank_transfer", schema = BankTransfer.class)
+    }
+)
+public abstract class Payment {
+
+    @Schema(
+        description     = "Payment type discriminator",
+        allowableValues = {"card", "bank_transfer"},
+        requiredMode    = Schema.RequiredMode.REQUIRED
+    )
+    private String type;
+}
+
+@Schema(description = "Card payment details")
+public class CardPayment extends Payment {
+
+    @Schema(description = "16-digit card number", pattern = "\\d{16}")
+    private String cardNumber;
+
+    @Schema(description = "Card expiry in MM/YY format", example = "12/27")
+    private String expiry;
+}
+
+@Schema(description = "Bank transfer details")
+public class BankTransfer extends Payment {
+
+    @Schema(description = "IBAN of the destination account", example = "DE89370400440532013000")
+    private String iban;
+
+    @Schema(description = "BIC / SWIFT code", example = "COBADEFFXXX")
+    private String bic;
+}
+```
+
+The request body annotation that references this polymorphic schema:
+
+```java
+@POST
+@Path("/payments")
+@Operation(summary = "Submit a payment")
+@ApiResponse(responseCode = "202", description = "Payment accepted")
+public Response submitPayment(
+    @RequestBody(
+        required = true,
+        content  = @Content(
+            mediaType = MediaType.APPLICATION_JSON,
+            schema    = @Schema(implementation = Payment.class)
+        )
+    ) Payment payment
+) { /* ... */ }
+```
+
+---
+
+## Inheritance with allOf
+
+```java
+@Schema(description = "Common audit fields for all entities")
+public class AuditableEntity {
+
+    @Schema(description = "Creation timestamp", format = "date-time", accessMode = Schema.AccessMode.READ_ONLY)
+    private String createdAt;
+
+    @Schema(description = "Last modification timestamp", format = "date-time", accessMode = Schema.AccessMode.READ_ONLY)
+    private String updatedAt;
+}
+
+@Schema(
+    description = "A product in the catalogue",
+    allOf       = {AuditableEntity.class}
+)
+public class Product extends AuditableEntity {
+
+    @Schema(description = "Product name", requiredMode = Schema.RequiredMode.REQUIRED, maxLength = 200)
+    private String name;
+
+    @Schema(description = "Price in USD", type = "number", format = "double", minimum = "0")
+    private Double price;
+}
+```
+
+<Tip>
+When extending a class, use `@Schema(allOf = {ParentClass.class})` on the subclass to correctly express the inheritance chain in the OpenAPI document. Without this, the parent's properties may be inlined rather than referenced via `$ref`.
+</Tip>

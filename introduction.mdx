@@ -1,0 +1,63 @@
+---
+title: "Introduction"
+description: "Swagger Core is a Java library that generates OpenAPI 3.x specifications from JAX-RS annotations at runtime or build time."
+---
+
+Swagger Core is a Java implementation of the [OpenAPI Specification](https://spec.openapis.org/oas/latest.html). It reads your JAX-RS resource classes and their annotations — both standard JAX-RS annotations like `@Path` and `@GET`, and OpenAPI-specific ones like `@Operation` and `@Schema` — and produces an accurate OpenAPI 3.x document automatically. No manual spec maintenance required.
+
+The library supports both the `javax` and `jakarta` JAX-RS namespaces, OpenAPI 3.0 and 3.1, and integrates with Maven, Gradle, and any JAX-RS-compatible servlet container.
+
+## Module structure
+
+Swagger Core is published as a set of focused modules under the `io.swagger.core.v3` groupId. You typically depend on one or two of these directly; the rest are pulled in transitively.
+
+| Module | Purpose |
+|---|---|
+| `swagger-annotations` | OpenAPI annotations (`@Operation`, `@Schema`, `@Parameter`, etc.) |
+| `swagger-models` | Java model classes representing the OpenAPI object graph |
+| `swagger-core` | Core scanning and resolution engine |
+| `swagger-integration` | Framework-agnostic integration layer and `OpenApiContext` SPI |
+| `swagger-jaxrs2` | JAX-RS 2.x reader and `OpenApiResource` endpoint |
+| `swagger-maven-plugin` | Generates the OpenAPI spec at build time via Maven |
+| `swagger-gradle-plugin` | Generates the OpenAPI spec at build time via Gradle |
+
+Each module also ships a `-jakarta` variant (e.g. `swagger-jaxrs2-jakarta`) that uses the `jakarta.ws.rs` namespace instead of `javax.ws.rs`. Both variants are functionally identical.
+
+<Note>
+  The `-jakarta` variants are available since version 2.1.7. If you are on a Jakarta EE 9+ runtime (Tomcat 10+, WildFly 27+, Payara 6+), use the `-jakarta` artifacts.
+</Note>
+
+## Compatibility
+
+| Swagger Core version | OpenAPI Spec | Status |
+|---|---|---|
+| **2.2.46** (current stable) | 3.x (3.0 and 3.1) | Supported |
+| 2.2.x | 3.x | Supported |
+| 2.1.x | 3.0 | Supported |
+| 2.0.x | 3.0 | Supported |
+| 1.6.x | 2.0 | Supported (separate branch) |
+
+OpenAPI 3.1 support was introduced in version 2.2.0.
+
+## Prerequisites
+
+- Java 11 or later
+- Maven 3.x or Gradle (for builds)
+- A JAX-RS 2.x runtime (Jersey, RESTEasy, CXF, etc.)
+
+## Quick links
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Add Swagger Core to your project and serve your first OpenAPI spec in minutes.
+  </Card>
+  <Card title="Installation" icon="box" href="/installation">
+    Maven and Gradle coordinates for all modules, including Jakarta variants.
+  </Card>
+  <Card title="Annotations guide" icon="tag" href="/annotations/overview">
+    Full reference for `@Operation`, `@Schema`, `@Parameter`, and every other OpenAPI annotation.
+  </Card>
+  <Card title="JAX-RS integration" icon="plug" href="/integration/jaxrs2">
+    Configure Swagger Core with Jersey, RESTEasy, and other JAX-RS implementations.
+  </Card>
+</CardGroup>

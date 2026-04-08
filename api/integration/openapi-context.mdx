@@ -1,0 +1,290 @@
+---
+title: "OpenApiContext API"
+description: "Interfaces and classes for bootstrapping, caching, and serving the OpenAPI document at runtime."
+---
+
+The `OpenApiContext` is the central runtime object that orchestrates scanning, reading, caching, and serving the `OpenAPI` document. A single context instance is typically created at application startup and stored in `OpenApiContextLocator`.
+
+---
+
+## `OpenApiContext` interface
+
+**Package:** `io.swagger.v3.oas.integration.api`
+
+```java
+public interface OpenApiContext {
+
+    String OPENAPI_CONTEXT_ID_KEY     = "openapi.context.id";
+    String OPENAPI_CONTEXT_ID_PREFIX  = OPENAPI_CONTEXT_ID_KEY + ".";
+    String OPENAPI_CONTEXT_ID_DEFAULT = OPENAPI_CONTEXT_ID_PREFIX + "default";
+
+    String getId();
+
+    OpenApiContext init() throws OpenApiConfigurationException;
+
+    OpenAPI read();
+
+    OpenAPIConfiguration getOpenApiConfiguration();
+
+    String getConfigLocation();
+
+    OpenApiContext getParent();
+
+    void setOpenApiScanner(OpenApiScanner openApiScanner);
+
+    void setOpenApiReader(OpenApiReader openApiReader);
+
+    /** @since 2.0.6 */
+    void setObjectMapperProcessor(ObjectMapperProcessor objectMapperProcessor);
+
+    /** @since 2.0.6 */
+    void setModelConverters(Set<ModelConverter> modelConverters);
+
+    /** @since 2.1.6 */
+    ObjectMapper getOutputJsonMapper();
+
+    /** @since 2.1.6 */
+    ObjectMapper getOutputYamlMapper();
+
+    /** @since 2.1.6 */
+    void setOutputJsonMapper(ObjectMapper outputJsonMapper);
+
+    /** @since 2.1.6 */
+    void setOutputYamlMapper(ObjectMapper outputYamlMapper);
+}
+```
+
+### Methods
+
+<ParamField path="getId" type="String">
+  Returns the unique identifier for this context. Used as the key in `OpenApiContextLocator`.
+</ParamField>
+
+<ParamField path="init" type="OpenApiContext">
+  Initializes the context: loads configuration (from file or the provided `OpenAPIConfiguration`), merges parent configuration, builds the scanner, reader, object-mapper processor, and model converters, configures the output mappers, and registers this instance with `OpenApiContextLocator`. Must be called before `read()`.
+</ParamField>
+
+<ParamField path="read" type="OpenAPI">
+  Produces the `OpenAPI` document by running the scanner and reader. The result is cached according to `cacheTTL`. When `cacheTTL = 0` the document is recomputed on every call; when `cacheTTL = -1` (default) it is cached indefinitely.
+</ParamField>
+
+<ParamField path="getOpenApiConfiguration" type="OpenAPIConfiguration">
+  Returns the effective `OpenAPIConfiguration` after merging with any parent context.
+</ParamField>
+
+<ParamField path="getConfigLocation" type="String">
+  Returns the explicit configuration file location, if one was set.
+</ParamField>
+
+<ParamField path="getParent" type="OpenApiContext">
+  Returns the parent context whose configuration is inherited when local configuration is absent.
+</ParamField>
+
+<ParamField path="setOpenApiScanner" type="void">
+  Replaces the scanner. Must be called before `init()` (or before the next `read()` call if caching is disabled).
+</ParamField>
+
+<ParamField path="setOpenApiReader" type="void">
+  Replaces the reader. A reader set here is treated as "provided" and will not be rebuilt by the caching path.
+</ParamField>
+
+<ParamField path="setObjectMapperProcessor" type="void">
+  Sets an `ObjectMapperProcessor` that customizes the `ObjectMapper` instances (since 2.0.6).
+</ParamField>
+
+<ParamField path="setModelConverters" type="void">
+  Sets additional `ModelConverter` instances to register before the first `read()` (since 2.0.6).
+</ParamField>
+
+<ParamField path="getOutputJsonMapper / getOutputYamlMapper" type="ObjectMapper">
+  Returns the `ObjectMapper` used to serialize the `OpenAPI` object to JSON or YAML respectively (since 2.1.6). These are the mappers that should be used in endpoint code.
+</ParamField>
+
+<ParamField path="setOutputJsonMapper / setOutputYamlMapper" type="void">
+  Replaces the output mapper. Call before `init()` or before the first `read()` (since 2.1.6).
+</ParamField>
+
+---
+
+## `GenericOpenApiContext`
+
+**Package:** `io.swagger.v3.oas.integration`
+
+The primary concrete implementation of `OpenApiContext`. Uses generics so that JAX-RS subclasses can return the correct builder type.
+
+```java
+public class GenericOpenApiContext<T extends GenericOpenApiContext> implements OpenApiContext { ... }
+```
+
+### Configuration loading order
+
+`init()` determines the effective configuration as follows:
+
+1. If `openApiConfiguration` was set directly on the context, use it.
+2. Otherwise scan known locations via `loadConfiguration()`:
+   - `classpath:openapi-configuration.yaml`
+   - `classpath:openapi-configuration.json`
+   - `file:openapi-configuration.yaml`
+   - `file:openapi-configuration.json`
+   - `classpath:openapi.yaml`
+   - `classpath:openapi.json`
+   - `file:openapi.yaml`
+   - `file:openapi.json`
+   - `service:` (via `ServiceLoader`)
+3. If nothing is found, create a minimal `SwaggerConfiguration` from `resourcePackages` / `resourceClasses`.
+4. Merge with parent context configuration (parent values fill in nulls).
+
+### Caching behaviour
+
+| `cacheTTL` value | Behaviour |
+|-----------------|-----------|
+| `0` | No caching; scanner and reader are rebuilt on every `read()` call. |
+| `-1` (default) | Cached indefinitely until the application restarts. |
+| `> 0` | Cached for the given number of milliseconds; stale entries trigger a rebuild. |
+
+### Additional fluent setters
+
+`GenericOpenApiContext` exposes all its properties as fluent setters returning `T`:
+
+```java
+ctx.id("my-context")
+   .openApiConfiguration(config)
+   .resourcePackages(Set.of("com.example.api"))
+   .cacheTTL(60_000L)
+   .openAPI31(false)
+   .schemaResolution(Schema.SchemaResolution.DEFAULT);
+```
+
+---
+
+## `GenericOpenApiContextBuilder`
+
+**Package:** `io.swagger.v3.oas.integration`
+
+The builder used to obtain or create a `GenericOpenApiContext`. If a context with the requested ID already exists in `OpenApiContextLocator`, it is returned directly without re-initialization.
+
+```java
+public class GenericOpenApiContextBuilder<T extends GenericOpenApiContextBuilder>
+        implements OpenApiContextBuilder {
+
+    public OpenApiContext buildContext(boolean init) throws OpenApiConfigurationException;
+
+    // Fluent setters
+    public T ctxId(String ctxId)
+    public T configLocation(String configLocation)
+    public T resourcePackages(Set<String> resourcePackages)
+    public T resourceClasses(Set<String> resourceClasses)
+    public T openApiConfiguration(OpenAPIConfiguration openApiConfiguration)
+}
+```
+
+<ParamField path="buildContext" type="OpenApiContext">
+  Builds (or retrieves) the context. When `init` is `true`, `context.init()` is called automatically.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `init` | `boolean` | Whether to call `init()` on a newly-created context. |
+</ParamField>
+
+<ParamField path="ctxId" type="String">
+  The context identifier. Defaults to `OpenApiContext.OPENAPI_CONTEXT_ID_DEFAULT` (`"openapi.context.id.default"`).
+</ParamField>
+
+<ParamField path="configLocation" type="String">
+  Path to an explicit configuration file (classpath or filesystem).
+</ParamField>
+
+<ParamField path="resourcePackages" type="Set&lt;String&gt;">
+  Packages to scan. Passed through to the context when not already set on the configuration.
+</ParamField>
+
+<ParamField path="resourceClasses" type="Set&lt;String&gt;">
+  Explicit class names to read.
+</ParamField>
+
+<ParamField path="openApiConfiguration" type="OpenAPIConfiguration">
+  Provides a fully-configured `OpenAPIConfiguration` object directly.
+</ParamField>
+
+---
+
+## `OpenApiContextLocator`
+
+**Package:** `io.swagger.v3.oas.integration`
+
+A process-scoped, thread-safe map from context ID to `OpenApiContext`. Used by `GenericOpenApiContext.register()` (called at the end of `init()`) and by `GenericOpenApiContextBuilder` to avoid creating duplicate contexts.
+
+```java
+public class OpenApiContextLocator {
+
+    public static synchronized OpenApiContextLocator getInstance()
+
+    public OpenApiContext getOpenApiContext(String id)
+
+    public void putOpenApiContext(String id, OpenApiContext openApiContext)
+}
+```
+
+<ParamField path="getInstance" type="OpenApiContextLocator">
+  Returns the singleton locator. Creates it on first access (double-checked via `synchronized`).
+</ParamField>
+
+<ParamField path="getOpenApiContext" type="OpenApiContext">
+  Looks up a context by ID. Returns `null` if no context with that ID has been registered.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `id` | `String` | The context identifier. |
+</ParamField>
+
+<ParamField path="putOpenApiContext" type="void">
+  Stores or replaces a context for the given ID.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `id` | `String` | The context identifier. |
+  | `openApiContext` | `OpenApiContext` | The context instance to register. |
+</ParamField>
+
+---
+
+## Building a context programmatically
+
+```java
+import io.swagger.v3.oas.integration.GenericOpenApiContextBuilder;
+import io.swagger.v3.oas.integration.SwaggerConfiguration;
+import io.swagger.v3.oas.integration.api.OpenApiContext;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Info;
+
+import java.util.Set;
+
+// 1. Build a SwaggerConfiguration
+SwaggerConfiguration config = new SwaggerConfiguration()
+    .openAPI(new OpenAPI()
+        .info(new Info().title("My API").version("1.0.0")))
+    .resourcePackages(Set.of("com.example.api"))
+    .prettyPrint(true)
+    .cacheTTL(30_000L); // refresh every 30 seconds
+
+// 2. Build and initialize the context
+OpenApiContext ctx = new GenericOpenApiContextBuilder<>()
+    .openApiConfiguration(config)
+    .buildContext(true); // true → calls ctx.init() automatically
+
+// 3. Read the document
+OpenAPI openAPI = ctx.read();
+
+// 4. Serialize to JSON using the context's output mapper
+String json = ctx.getOutputJsonMapper().writeValueAsString(openAPI);
+
+// 5. Serialize to YAML
+String yaml = ctx.getOutputYamlMapper().writeValueAsString(openAPI);
+```
+
+Retrieve the same context later (e.g., from a different class):
+
+```java
+OpenApiContext ctx = OpenApiContextLocator.getInstance()
+    .getOpenApiContext(OpenApiContext.OPENAPI_CONTEXT_ID_DEFAULT);
+```

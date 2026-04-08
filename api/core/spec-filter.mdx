@@ -1,0 +1,389 @@
+---
+title: "OpenAPISpecFilter API"
+description: "Interfaces and classes for filtering and transforming an OpenAPI object at runtime — by path, operation, parameter, request body, response, and schema."
+---
+
+The spec filter pipeline allows callers to selectively include or exclude parts of an `OpenAPI` document at serving time. A filter receives HTTP request context (query parameters, cookies, and headers) so decisions can be made per-request.
+
+## `OpenAPISpecFilter` interface
+
+**Package:** `io.swagger.v3.core.filter`
+
+Implement this interface to control which paths, operations, parameters, request bodies, responses, and schemas appear in the output.
+
+```java
+public interface OpenAPISpecFilter {
+
+    Optional<OpenAPI> filterOpenAPI(
+            OpenAPI openAPI,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers);
+
+    Optional<PathItem> filterPathItem(
+            PathItem pathItem,
+            ApiDescription api,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers);
+
+    Optional<Operation> filterOperation(
+            Operation operation,
+            ApiDescription api,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers);
+
+    Optional<Parameter> filterParameter(
+            Parameter parameter,
+            Operation operation,
+            ApiDescription api,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers);
+
+    Optional<RequestBody> filterRequestBody(
+            RequestBody requestBody,
+            Operation operation,
+            ApiDescription api,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers);
+
+    Optional<ApiResponse> filterResponse(
+            ApiResponse response,
+            Operation operation,
+            ApiDescription api,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers);
+
+    Optional<Schema> filterSchema(
+            Schema schema,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers);
+
+    Optional<Schema> filterSchemaProperty(
+            Schema property,
+            Schema schema,
+            String propName,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers);
+
+    boolean isRemovingUnreferencedDefinitions();
+
+    default boolean isOpenAPI31Filter() {
+        return false;
+    }
+}
+```
+
+### Methods
+
+<ParamField path="filterOpenAPI" type="Optional&lt;OpenAPI&gt;">
+  Called once per filtering pass on the root `OpenAPI` object. Return `Optional.empty()` to suppress the entire document; return `Optional.of(openAPI)` to keep it.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `openAPI` | `OpenAPI` | The root OpenAPI object. |
+  | `params` | `Map<String, List<String>>` | HTTP query parameters from the incoming request. |
+  | `cookies` | `Map<String, String>` | HTTP cookies from the incoming request. |
+  | `headers` | `Map<String, List<String>>` | HTTP headers from the incoming request. |
+</ParamField>
+
+<ParamField path="filterPathItem" type="Optional&lt;PathItem&gt;">
+  Called for each path item. Return `Optional.empty()` to remove the path entirely.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `pathItem` | `PathItem` | The path item to evaluate. |
+  | `api` | `ApiDescription` | Describes the resource path and HTTP method context. |
+  | `params` | `Map<String, List<String>>` | HTTP query parameters. |
+  | `cookies` | `Map<String, String>` | HTTP cookies. |
+  | `headers` | `Map<String, List<String>>` | HTTP headers. |
+</ParamField>
+
+<ParamField path="filterOperation" type="Optional&lt;Operation&gt;">
+  Called for each operation within a path item. Return `Optional.empty()` to remove the operation.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `operation` | `Operation` | The operation to evaluate. |
+  | `api` | `ApiDescription` | Resource path and HTTP method. |
+  | `params` | `Map<String, List<String>>` | HTTP query parameters. |
+  | `cookies` | `Map<String, String>` | HTTP cookies. |
+  | `headers` | `Map<String, List<String>>` | HTTP headers. |
+</ParamField>
+
+<ParamField path="filterParameter" type="Optional&lt;Parameter&gt;">
+  Called for each parameter of an operation. Return `Optional.empty()` to remove the parameter.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `parameter` | `Parameter` | The parameter to evaluate. |
+  | `operation` | `Operation` | The operation that owns this parameter. |
+  | `api` | `ApiDescription` | Resource path and HTTP method. |
+  | `params` | `Map<String, List<String>>` | HTTP query parameters. |
+  | `cookies` | `Map<String, String>` | HTTP cookies. |
+  | `headers` | `Map<String, List<String>>` | HTTP headers. |
+</ParamField>
+
+<ParamField path="filterRequestBody" type="Optional&lt;RequestBody&gt;">
+  Called for an operation's request body. Return `Optional.empty()` to remove it.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `requestBody` | `RequestBody` | The request body to evaluate. |
+  | `operation` | `Operation` | The operation that owns this request body. |
+  | `api` | `ApiDescription` | Resource path and HTTP method. |
+  | `params` | `Map<String, List<String>>` | HTTP query parameters. |
+  | `cookies` | `Map<String, String>` | HTTP cookies. |
+  | `headers` | `Map<String, List<String>>` | HTTP headers. |
+</ParamField>
+
+<ParamField path="filterResponse" type="Optional&lt;ApiResponse&gt;">
+  Called for each response of an operation. Return `Optional.empty()` to remove the response entry.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `response` | `ApiResponse` | The response to evaluate. |
+  | `operation` | `Operation` | The owning operation. |
+  | `api` | `ApiDescription` | Resource path and HTTP method. |
+  | `params` | `Map<String, List<String>>` | HTTP query parameters. |
+  | `cookies` | `Map<String, String>` | HTTP cookies. |
+  | `headers` | `Map<String, List<String>>` | HTTP headers. |
+</ParamField>
+
+<ParamField path="filterSchema" type="Optional&lt;Schema&gt;">
+  Called for each schema in `components/schemas`. Return `Optional.empty()` to remove the schema definition.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `schema` | `Schema` | The component schema to evaluate. |
+  | `params` | `Map<String, List<String>>` | HTTP query parameters. |
+  | `cookies` | `Map<String, String>` | HTTP cookies. |
+  | `headers` | `Map<String, List<String>>` | HTTP headers. |
+</ParamField>
+
+<ParamField path="filterSchemaProperty" type="Optional&lt;Schema&gt;">
+  Called for each property within a component schema. Return `Optional.empty()` to remove the property.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `property` | `Schema` | The property schema to evaluate. |
+  | `schema` | `Schema` | The parent schema that owns this property. |
+  | `propName` | `String` | The property name key. |
+  | `params` | `Map<String, List<String>>` | HTTP query parameters. |
+  | `cookies` | `Map<String, String>` | HTTP cookies. |
+  | `headers` | `Map<String, List<String>>` | HTTP headers. |
+</ParamField>
+
+<ParamField path="isRemovingUnreferencedDefinitions" type="boolean">
+  When `true`, `SpecFilter` performs a second pass that removes any component schemas no longer referenced by the filtered document.
+</ParamField>
+
+<ParamField path="isOpenAPI31Filter" type="boolean">
+  When `true`, the filter uses the OpenAPI 3.1-aware object mapper when cloning schemas. Default implementation returns `false`.
+</ParamField>
+
+---
+
+## `AbstractSpecFilter`
+
+**Package:** `io.swagger.v3.core.filter`
+
+A no-op base implementation of `OpenAPISpecFilter`. Every method returns an `Optional.of(...)` wrapping the unmodified input, and `isRemovingUnreferencedDefinitions()` returns `false`.
+
+Extend this class and override only the methods relevant to your use case.
+
+```java
+public abstract class AbstractSpecFilter implements OpenAPISpecFilter {
+
+    @Override
+    public Optional<OpenAPI> filterOpenAPI(OpenAPI openAPI,
+            Map<String, List<String>> params, Map<String, String> cookies,
+            Map<String, List<String>> headers) {
+        return Optional.of(openAPI);
+    }
+
+    @Override
+    public Optional<PathItem> filterPathItem(PathItem pathItem, ApiDescription api,
+            Map<String, List<String>> params, Map<String, String> cookies,
+            Map<String, List<String>> headers) {
+        return Optional.of(pathItem);
+    }
+
+    @Override
+    public Optional<Operation> filterOperation(Operation operation, ApiDescription api,
+            Map<String, List<String>> params, Map<String, String> cookies,
+            Map<String, List<String>> headers) {
+        return Optional.of(operation);
+    }
+
+    @Override
+    public Optional<Parameter> filterParameter(Parameter parameter, Operation operation,
+            ApiDescription api, Map<String, List<String>> params,
+            Map<String, String> cookies, Map<String, List<String>> headers) {
+        return Optional.of(parameter);
+    }
+
+    @Override
+    public Optional<RequestBody> filterRequestBody(RequestBody requestBody, Operation operation,
+            ApiDescription api, Map<String, List<String>> params,
+            Map<String, String> cookies, Map<String, List<String>> headers) {
+        return Optional.of(requestBody);
+    }
+
+    @Override
+    public Optional<ApiResponse> filterResponse(ApiResponse response, Operation operation,
+            ApiDescription api, Map<String, List<String>> params,
+            Map<String, String> cookies, Map<String, List<String>> headers) {
+        return Optional.of(response);
+    }
+
+    @Override
+    public Optional<Schema> filterSchema(Schema schema,
+            Map<String, List<String>> params, Map<String, String> cookies,
+            Map<String, List<String>> headers) {
+        return Optional.of(schema);
+    }
+
+    @Override
+    public Optional<Schema> filterSchemaProperty(Schema property, Schema schema,
+            String propName, Map<String, List<String>> params,
+            Map<String, String> cookies, Map<String, List<String>> headers) {
+        return Optional.of(property);
+    }
+
+    @Override
+    public boolean isRemovingUnreferencedDefinitions() {
+        return false;
+    }
+}
+```
+
+---
+
+## `SpecFilter`
+
+**Package:** `io.swagger.v3.core.filter`
+
+The orchestrator that applies an `OpenAPISpecFilter` implementation to an `OpenAPI` object and returns a filtered clone.
+
+```java
+public class SpecFilter {
+
+    public OpenAPI filter(
+            OpenAPI openAPI,
+            OpenAPISpecFilter filter,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers);
+}
+```
+
+### `filter` method
+
+<ParamField path="openAPI" type="OpenAPI" required>
+  The source OpenAPI document to filter. It is not mutated; a new `OpenAPI` clone is returned.
+</ParamField>
+
+<ParamField path="filter" type="OpenAPISpecFilter" required>
+  The filter implementation to apply.
+</ParamField>
+
+<ParamField path="params" type="Map&lt;String, List&lt;String&gt;&gt;">
+  HTTP query parameters from the incoming request, forwarded to every filter method. May be `null`.
+</ParamField>
+
+<ParamField path="cookies" type="Map&lt;String, String&gt;">
+  HTTP cookies from the incoming request. May be `null`.
+</ParamField>
+
+<ParamField path="headers" type="Map&lt;String, List&lt;String&gt;&gt;">
+  HTTP request headers. May be `null`.
+</ParamField>
+
+<ResponseField name="OpenAPI" type="OpenAPI">
+  A deep clone of the input document with all excluded elements removed. Returns `null` if `filterOpenAPI` returns `Optional.empty()`.
+</ResponseField>
+
+### Processing order
+
+1. `filterOpenAPI` — evaluate the root document; abort if empty.
+2. For each path: `filterPathItem`, then per-operation `filterOperation`.
+3. Per operation: `filterParameter`, `filterRequestBody`, `filterResponse`.
+4. `filterSchema` / `filterSchemaProperty` for entries in `components/schemas`.
+5. Tag cleanup — tags referenced only by removed operations are pruned.
+6. If `isRemovingUnreferencedDefinitions()` is `true`, a reference-tracing pass removes any `components/schemas` entries that are no longer `$ref`-reachable from the filtered document.
+
+---
+
+## Custom filter example
+
+```java
+import io.swagger.v3.core.filter.AbstractSpecFilter;
+import io.swagger.v3.core.model.ApiDescription;
+import io.swagger.v3.oas.models.Operation;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * Hides operations tagged "internal" unless the request carries
+ * the header X-Internal: true.
+ */
+public class InternalOperationFilter extends AbstractSpecFilter {
+
+    @Override
+    public Optional<Operation> filterOperation(
+            Operation operation,
+            ApiDescription api,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers) {
+
+        List<String> internalHeader = headers != null
+                ? headers.get("X-Internal")
+                : null;
+        boolean isInternalCaller = internalHeader != null
+                && internalHeader.contains("true");
+
+        if (!isInternalCaller
+                && operation.getTags() != null
+                && operation.getTags().contains("internal")) {
+            return Optional.empty(); // remove the operation
+        }
+        return Optional.of(operation);
+    }
+
+    @Override
+    public boolean isRemovingUnreferencedDefinitions() {
+        return true; // clean up orphaned schemas after filtering
+    }
+}
+```
+
+Apply the filter when serving the spec:
+
+```java
+OpenAPI source = context.read();
+OpenAPI filtered = new SpecFilter().filter(
+        source,
+        new InternalOperationFilter(),
+        requestParams,
+        requestCookies,
+        requestHeaders);
+
+String json = Json.pretty(filtered);
+```
+
+Register via `SwaggerConfiguration` so the integration layer applies it automatically:
+
+```java
+SwaggerConfiguration config = new SwaggerConfiguration()
+    .filterClass("com.example.InternalOperationFilter");
+```

@@ -1,0 +1,215 @@
+---
+title: "@Parameter"
+description: "Documents a single operation parameter — path, query, header, or cookie — and controls its serialization behavior."
+---
+
+`io.swagger.v3.oas.annotations.Parameter`
+
+Annotate a method parameter, field, or method to define it as an OpenAPI parameter. You can also supply `@Parameter` entries directly inside `@Operation(parameters = {...})` to add parameters that are not bound to method arguments.
+
+`@Parameter` is repeatable; apply it multiple times on a method (or use the `@Parameters` container) to declare multiple operation-level parameters.
+
+## Elements
+
+<ParamField path="name" type="string" default='""'>
+  The name of the parameter. Required when the annotation is used at the operation level (not on a method parameter that already carries a JAX-RS binding annotation).
+</ParamField>
+
+<ParamField path="in" type="ParameterIn" default="ParameterIn.DEFAULT">
+  The location of the parameter. A `DEFAULT` value is ignored by the reader engine, which will infer the location from JAX-RS annotations. See [ParameterIn values](#parameterin-enum) below.
+</ParamField>
+
+<ParamField path="description" type="string" default='""'>
+  A brief description of the parameter. Supports CommonMark markdown.
+</ParamField>
+
+<ParamField path="required" type="boolean" default="false">
+  Whether the parameter is mandatory. Must be `true` when `in` is `PATH`.
+</ParamField>
+
+<ParamField path="deprecated" type="boolean" default="false">
+  Marks the parameter as deprecated, signaling that it should be transitioned out of use.
+</ParamField>
+
+<ParamField path="allowEmptyValue" type="boolean" default="false">
+  Allows sending an empty value. When `false`, an absent value is treated as `null`. Has no effect on required parameters — an empty required parameter still causes a validation error.
+</ParamField>
+
+<ParamField path="style" type="ParameterStyle" default="ParameterStyle.DEFAULT">
+  Describes how the parameter value is serialized. Ignored when `content` or `array` is specified. See [ParameterStyle values](#parameterstyle-enum) below.
+</ParamField>
+
+<ParamField path="explode" type="Explode" default="Explode.DEFAULT">
+  When `true`, array or object values generate separate parameters for each item or key-value pair. Defaults to `true` for `form` style and `false` for all other styles. Ignored when `content` or `array` is specified.
+</ParamField>
+
+<ParamField path="allowReserved" type="boolean" default="false">
+  Allows reserved RFC 3986 characters in the parameter value without percent-encoding. Only applies to `query` parameters. Ignored when `content` or `array` is specified.
+</ParamField>
+
+<ParamField path="schema" type="Schema" default="@Schema()">
+  The schema defining the type of this parameter. Ignored when `content` or `array` is specified.
+</ParamField>
+
+<ParamField path="array" type="ArraySchema" default="@ArraySchema()">
+  The schema for array-typed parameters. Ignored when `content` is specified. Cannot be combined with `schema`.
+</ParamField>
+
+<ParamField path="content" type="Content[]" default="{}">
+  Media-type-specific representations of the parameter. Mutually exclusive with `schema` and `array`.
+</ParamField>
+
+<ParamField path="hidden" type="boolean" default="false">
+  When `true`, this parameter is excluded from the generated OpenAPI document.
+</ParamField>
+
+<ParamField path="examples" type="ExampleObject[]" default="{}">
+  Named examples of the parameter value, each paired with an optional summary and description.
+</ParamField>
+
+<ParamField path="example" type="string" default='""'>
+  A single inline example of the parameter. Ignored when `examples`, `content`, or `array` is specified.
+</ParamField>
+
+<ParamField path="extensions" type="Extension[]" default="{}">
+  Specification extensions (`x-*` fields) to add to this parameter object.
+</ParamField>
+
+<ParamField path="ref" type="string" default='""'>
+  A `$ref` pointer to a parameter defined in the `components/parameters` section of the OpenAPI document. When set, all other elements are ignored.
+
+  _Added in swagger-annotations 2.0.3._
+</ParamField>
+
+<ParamField path="validationGroups" type="Class<?>[]" default="{}">
+  Bean Validation groups to apply when validating this parameter.
+</ParamField>
+
+## ParameterIn enum
+
+| Constant  | OAS value  | Description                              |
+|-----------|-----------|------------------------------------------|
+| `DEFAULT` | _(empty)_ | No location; the reader infers it.       |
+| `HEADER`  | `header`  | Sent as an HTTP request header.          |
+| `QUERY`   | `query`   | Appended to the URL query string.        |
+| `PATH`    | `path`    | Embedded in the URL path template.       |
+| `COOKIE`  | `cookie`  | Passed as an HTTP cookie.                |
+
+## ParameterStyle enum
+
+| Constant        | OAS value       | Applicable `in` values     |
+|-----------------|-----------------|---------------------------|
+| `DEFAULT`       | _(empty)_       | All (reader infers style)  |
+| `MATRIX`        | `matrix`        | `path`                    |
+| `LABEL`         | `label`         | `path`                    |
+| `FORM`          | `form`          | `query`, `cookie`         |
+| `SPACEDELIMITED`| `spaceDelimited`| `query`                   |
+| `PIPEDELIMITED` | `pipeDelimited` | `query`                   |
+| `DEEPOBJECT`    | `deepObject`    | `query`                   |
+| `SIMPLE`        | `simple`        | `path`, `header`          |
+
+## Usage examples
+
+### Path parameter
+
+```java
+@GET
+@Path("/pets/{petId}")
+@Operation(summary = "Find pet by ID")
+public Pet getPetById(
+    @Parameter(
+        name        = "petId",
+        in          = ParameterIn.PATH,
+        required    = true,
+        description = "Numeric ID of the pet to retrieve",
+        schema      = @Schema(type = "integer", format = "int64", minimum = "1")
+    )
+    @PathParam("petId") long petId
+) {
+    return petService.findById(petId);
+}
+```
+
+### Query parameters
+
+```java
+@GET
+@Path("/pets")
+@Operation(summary = "List pets")
+public List<Pet> listPets(
+    @Parameter(
+        name        = "status",
+        in          = ParameterIn.QUERY,
+        description = "Filter by status",
+        schema      = @Schema(
+            type            = "string",
+            allowableValues = { "available", "pending", "sold" }
+        )
+    )
+    @QueryParam("status") String status,
+
+    @Parameter(
+        name        = "limit",
+        in          = ParameterIn.QUERY,
+        description = "Maximum number of results to return",
+        schema      = @Schema(type = "integer", format = "int32", maximum = "100")
+    )
+    @QueryParam("limit") @DefaultValue("20") int limit
+) {
+    return petService.list(status, limit);
+}
+```
+
+### Header parameter
+
+```java
+@GET
+@Path("/orders")
+@Operation(summary = "List orders")
+public List<Order> listOrders(
+    @Parameter(
+        name        = "X-Request-ID",
+        in          = ParameterIn.HEADER,
+        description = "Client-generated request identifier for tracing",
+        schema      = @Schema(type = "string", format = "uuid")
+    )
+    @HeaderParam("X-Request-ID") String requestId
+) {
+    return orderService.list(requestId);
+}
+```
+
+### Cookie parameter
+
+```java
+@GET
+@Path("/session")
+@Operation(summary = "Get current session")
+public Session getSession(
+    @Parameter(
+        name        = "session_id",
+        in          = ParameterIn.COOKIE,
+        description = "Session identifier stored in a cookie",
+        schema      = @Schema(type = "string")
+    )
+    @CookieParam("session_id") String sessionId
+) {
+    return sessionService.get(sessionId);
+}
+```
+
+### `$ref` to a reusable parameter
+
+```java
+@GET
+@Path("/reports")
+@Operation(
+    summary    = "Generate report",
+    parameters = {
+        @Parameter(ref = "#/components/parameters/AcceptLanguage")
+    }
+)
+public Report generateReport() {
+    return reportService.generate();
+}
+```

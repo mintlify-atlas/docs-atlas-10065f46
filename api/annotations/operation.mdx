@@ -1,0 +1,143 @@
+---
+title: "@Operation"
+description: "Defines a JAX-RS method as an OpenAPI Operation and configures its metadata, parameters, responses, and security."
+---
+
+`io.swagger.v3.oas.annotations.Operation`
+
+Annotate a method to declare it as an OpenAPI operation and to override or extend any properties that would otherwise be auto-detected from JAX-RS annotations.
+
+<Note>
+  Methods that carry a JAX-RS `@Path` and HTTP method annotation (e.g. `@GET`) are scanned automatically when `scanAllResources` is `true` (the default). Use `@Operation` when you need to supply or override metadata.
+</Note>
+
+## Elements
+
+<ParamField path="method" type="string" default='""'>
+  The HTTP method for this operation (e.g. `"GET"`, `"POST"`). Normally derived from the JAX-RS HTTP method annotation; set this only when you need to override it.
+</ParamField>
+
+<ParamField path="summary" type="string" default='""'>
+  A short, human-readable summary of the operation. Keep it under 120 characters so it displays correctly in Swagger UI.
+</ParamField>
+
+<ParamField path="description" type="string" default='""'>
+  A longer description of what the operation does. Supports CommonMark markdown.
+</ParamField>
+
+<ParamField path="operationId" type="string" default='""'>
+  A unique string used by third-party tools to identify this operation across the entire API. Must be unique within the document.
+</ParamField>
+
+<ParamField path="tags" type="String[]" default="{}">
+  One or more tags for logical grouping of operations in the generated documentation. Can also be applied at the method level with the repeatable `@Tag` annotation.
+</ParamField>
+
+<ParamField path="parameters" type="Parameter[]" default="{}">
+  Additional parameters to merge with any parameters automatically detected from the method signature. Accepts an array of `@Parameter` annotations.
+</ParamField>
+
+<ParamField path="requestBody" type="RequestBody" default="@RequestBody()">
+  The request body associated with this operation. Accepts a `@RequestBody` annotation.
+</ParamField>
+
+<ParamField path="responses" type="ApiResponse[]" default="{}">
+  The list of possible responses returned by this operation. Each entry is an `@ApiResponse` annotation. Can also be applied at the method level as repeatable annotations.
+</ParamField>
+
+<ParamField path="deprecated" type="boolean" default="false">
+  Marks the operation as deprecated. Alternatively, you can annotate the method with the standard Java `@Deprecated` annotation.
+</ParamField>
+
+<ParamField path="security" type="SecurityRequirement[]" default="{}">
+  A declaration of which security mechanisms can be used for this operation. Overrides any top-level security declared on the `@OpenAPIDefinition`. Can also be applied at method level with `@SecurityRequirement`.
+</ParamField>
+
+<ParamField path="servers" type="Server[]" default="{}">
+  An alternative server array to service this operation, overriding any global servers. Can also be applied at method level with repeatable `@Server` annotations.
+</ParamField>
+
+<ParamField path="extensions" type="Extension[]" default="{}">
+  Specification extensions (`x-*` fields) to add to this operation object. Can also be applied at method level with repeatable `@Extension` annotations.
+</ParamField>
+
+<ParamField path="externalDocs" type="ExternalDocumentation" default="@ExternalDocumentation()">
+  A reference to external documentation for this operation.
+</ParamField>
+
+<ParamField path="hidden" type="boolean" default="false">
+  When `true`, the operation is excluded from the generated OpenAPI document. Equivalent to placing `@Hidden` on the method.
+</ParamField>
+
+<ParamField path="ignoreJsonView" type="boolean" default="false">
+  When `true`, Jackson `@JsonView` annotations are ignored while resolving this operation and its associated types.
+</ParamField>
+
+## Usage example
+
+```java
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.parameters.RequestBody;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import javax.ws.rs.*;
+import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Response;
+
+@Path("/pets")
+@Tag(name = "pets")
+public class PetResource {
+
+    @PUT
+    @Path("/{petId}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Operation(
+        operationId  = "updatePet",
+        summary      = "Update an existing pet",
+        description  = "Updates a pet record identified by `petId`. Returns the updated pet on success.",
+        tags         = { "pets" },
+        security     = { @SecurityRequirement(name = "petstore_auth", scopes = { "write:pets" }) },
+        deprecated   = false,
+        parameters   = {
+            @Parameter(
+                name        = "petId",
+                in          = io.swagger.v3.oas.annotations.enums.ParameterIn.PATH,
+                required    = true,
+                description = "ID of the pet to update",
+                schema      = @Schema(type = "integer", format = "int64")
+            )
+        },
+        requestBody  = @RequestBody(
+            description = "Pet object with updated data",
+            required    = true,
+            content     = @Content(
+                mediaType = MediaType.APPLICATION_JSON,
+                schema    = @Schema(implementation = Pet.class)
+            )
+        ),
+        responses    = {
+            @ApiResponse(
+                responseCode = "200",
+                description  = "Pet updated successfully",
+                content      = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema    = @Schema(implementation = Pet.class)
+                )
+            ),
+            @ApiResponse(responseCode = "400", description = "Invalid ID supplied"),
+            @ApiResponse(responseCode = "404", description = "Pet not found"),
+            @ApiResponse(responseCode = "422", description = "Validation exception")
+        }
+    )
+    public Response updatePet(@PathParam("petId") long petId, Pet pet) {
+        // implementation
+        return Response.ok(pet).build();
+    }
+}
+```

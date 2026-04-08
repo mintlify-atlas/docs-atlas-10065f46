@@ -1,0 +1,128 @@
+---
+title: "Jakarta namespace support"
+description: "Use Swagger Core with Jakarta EE runtimes by switching to the -jakarta artifact variants, available since Swagger Core 2.1.7."
+---
+
+Java EE was transferred to the Eclipse Foundation and rebranded as Jakarta EE. As part of this transition, all `javax.*` package names were migrated to `jakarta.*` starting with Jakarta EE 9. Libraries that depend on JAX-RS, Servlet, or other Java EE APIs must ship separate artifacts to support both namespaces.
+
+Swagger Core provides a parallel set of artifacts with the `-jakarta` suffix for every module that touches the `javax` namespace. These artifacts are **bytecode-transformed** versions of the standard `javax` artifacts — the source code is identical and the functionality is the same.
+
+<Note>
+Jakarta namespace support was introduced in Swagger Core **2.1.7** (released 2021-02-18).
+</Note>
+
+## Available artifacts
+
+<CardGroup cols={2}>
+  <Card title="swagger-jaxrs2-jakarta">
+    JAX-RS 2.x reader and integration layer for Jakarta EE runtimes. The primary dependency for Jakarta EE applications.
+  </Card>
+  <Card title="swagger-jaxrs2-servlet-initializer-jakarta">
+    `ServletContainerInitializer`-based auto-discovery for Jakarta Servlet 5+ containers.
+  </Card>
+  <Card title="swagger-jaxrs2-servlet-initializer-v2-jakarta">
+    Alternative servlet initializer variant for Jakarta EE environments that require explicit registration.
+  </Card>
+  <Card title="swagger-annotations">
+    The annotations module is namespace-agnostic — it has no dependency on `javax` or `jakarta` APIs and is shared by both variants. Use the same `swagger-annotations` artifact regardless of your runtime.
+  </Card>
+</CardGroup>
+
+Additional supporting artifacts also ship with the `-jakarta` suffix:
+
+- `swagger-core-jakarta` — core resolver and converter infrastructure
+- `swagger-models-jakarta` — OpenAPI model objects
+- `swagger-integration-jakarta` — `SwaggerConfiguration` and scanner integration
+- `swagger-maven-plugin-jakarta` — Maven plugin for Jakarta EE projects
+
+## Maven dependencies
+
+Replace the standard `javax` artifact IDs with their `-jakarta` equivalents. The `groupId` and `version` are unchanged.
+
+<Tabs>
+  <Tab title="JAX-RS integration (Jakarta)">
+    ```xml
+    <dependency>
+      <groupId>io.swagger.core.v3</groupId>
+      <artifactId>swagger-jaxrs2-jakarta</artifactId>
+      <version>2.2.46</version>
+    </dependency>
+    ```
+  </Tab>
+  <Tab title="Servlet initializer (Jakarta)">
+    ```xml
+    <dependency>
+      <groupId>io.swagger.core.v3</groupId>
+      <artifactId>swagger-jaxrs2-servlet-initializer-jakarta</artifactId>
+      <version>2.2.46</version>
+    </dependency>
+    ```
+
+    Or the v2 variant:
+
+    ```xml
+    <dependency>
+      <groupId>io.swagger.core.v3</groupId>
+      <artifactId>swagger-jaxrs2-servlet-initializer-v2-jakarta</artifactId>
+      <version>2.2.46</version>
+    </dependency>
+    ```
+  </Tab>
+  <Tab title="Annotations (shared)">
+    ```xml
+    <!-- Same artifact for both javax and jakarta runtimes -->
+    <dependency>
+      <groupId>io.swagger.core.v3</groupId>
+      <artifactId>swagger-annotations</artifactId>
+      <version>2.2.46</version>
+    </dependency>
+    ```
+  </Tab>
+  <Tab title="Maven plugin (Jakarta)">
+    ```xml
+    <plugin>
+      <groupId>io.swagger.core.v3</groupId>
+      <artifactId>swagger-maven-plugin-jakarta</artifactId>
+      <version>2.2.46</version>
+      <configuration>
+        <outputFileName>openapi</outputFileName>
+        <outputPath>${project.build.directory}</outputPath>
+        <outputFormat>JSON</outputFormat>
+        <resourcePackages>
+          <package>com.example.api</package>
+        </resourcePackages>
+      </configuration>
+      <executions>
+        <execution>
+          <phase>compile</phase>
+          <goals><goal>resolve</goal></goals>
+        </execution>
+      </executions>
+    </plugin>
+    ```
+  </Tab>
+</Tabs>
+
+## Choosing between javax and jakarta
+
+<Steps>
+  <Step title="Identify your runtime">
+    Check which namespace your application server or framework uses:
+    - **Jakarta EE 9+** (WildFly 27+, Payara 6+, GlassFish 7+, Quarkus 3+, Spring Boot 3+): use `-jakarta` artifacts.
+    - **Java EE / Jakarta EE 8** (older WildFly, Payara 5, GlassFish 5, Quarkus 2, Spring Boot 2): use the standard (no-suffix) artifacts.
+  </Step>
+  <Step title="Replace artifact IDs">
+    Swap every `swagger-jaxrs2`, `swagger-jaxrs2-servlet-initializer`, and `swagger-jaxrs2-servlet-initializer-v2` dependency with the corresponding `-jakarta` variant. Keep `swagger-annotations` as-is.
+  </Step>
+  <Step title="Verify transitive dependencies">
+    The `-jakarta` artifacts depend on `jakarta.ws.rs:jakarta.ws.rs-api` and `jakarta.servlet:jakarta.servlet-api`. Make sure these are provided by your runtime or added as `provided` scope dependencies — do not bundle them.
+  </Step>
+</Steps>
+
+<Warning>
+Do not mix `javax` and `jakarta` Swagger Core artifacts in the same project. The transformer-generated Jakarta artifacts rewrite all internal `javax.` imports to `jakarta.`, so they are binary-incompatible with the standard artifacts at runtime.
+</Warning>
+
+## Functionality parity
+
+The `-jakarta` artifacts are produced by the [Eclipse Transformer](https://projects.eclipse.org/projects/technology.transformer) Maven plugin, which rewrites bytecode and resources from the `javax` source artifact. There is no functional difference between the `javax` and `jakarta` variants — every feature, configuration option, and annotation behaves identically. All `SwaggerConfiguration` options, custom `ModelConverter` registrations, and servlet initializer hooks work the same way regardless of the namespace variant used.

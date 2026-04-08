@@ -1,0 +1,257 @@
+---
+title: "OpenAPI extensions"
+description: "Add vendor extensions (x- prefixed fields) to your OpenAPI document using @Extension and @ExtensionProperty annotations or the Java model API."
+---
+
+The OpenAPI Specification allows any object to carry additional fields whose names begin with `x-`. These **vendor extensions** let you attach metadata that is meaningful to your tooling without violating the spec. Swagger Core supports extensions both through annotations and through the Java model API.
+
+## Annotation-based extensions
+
+### @Extension
+
+`io.swagger.v3.oas.annotations.extensions.Extension` declares a named or anonymous group of extension properties:
+
+```java
+@Target({FIELD, METHOD, PARAMETER, TYPE, ANNOTATION_TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Repeatable(Extensions.class)
+public @interface Extension {
+
+    /**
+     * An optional name for this extension group.
+     * When set, properties are nested under "x-{name}".
+     * When empty, each property is a top-level "x-{name}" entry.
+     */
+    String name() default "";
+
+    /** The extension properties in this group. */
+    ExtensionProperty[] properties();
+}
+```
+
+### @ExtensionProperty
+
+`io.swagger.v3.oas.annotations.extensions.ExtensionProperty` is a single key/value pair within an `@Extension`:
+
+```java
+@Target(ElementType.ANNOTATION_TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface ExtensionProperty {
+
+    /** The name of the property (becomes part of the "x-" key). */
+    String name();
+
+    /** The string value of the property. */
+    String value();
+
+    /**
+     * When true, `value` is parsed as JSON/YAML and serialised as a
+     * structured object rather than a plain string.
+     */
+    boolean parseValue() default false;
+}
+```
+
+### @Extensions
+
+`io.swagger.v3.oas.annotations.extensions.Extensions` is the repeatable container for multiple `@Extension` annotations on the same element:
+
+```java
+@Target({FIELD, METHOD, PARAMETER, TYPE, ANNOTATION_TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Inherited
+public @interface Extensions {
+    Extension[] value() default {};
+}
+```
+
+Because `@Extension` is `@Repeatable`, you can use it multiple times on the same element without explicitly wrapping it in `@Extensions`.
+
+## Adding extensions to annotations
+
+### @Operation
+
+Attach extensions to an operation using the `extensions` field of `@Operation`:
+
+```java
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.extensions.Extension;
+import io.swagger.v3.oas.annotations.extensions.ExtensionProperty;
+
+@GET
+@Path("/orders/{id}")
+@Operation(
+    summary = "Retrieve an order by ID",
+    extensions = {
+        @Extension(
+            name = "x-internal-id",
+            properties = @ExtensionProperty(name = "value", value = "order-get-by-id")
+        ),
+        @Extension(properties = {
+            @ExtensionProperty(name = "x-rate-limit-group", value = "read-heavy"),
+            @ExtensionProperty(name = "x-audit-required", value = "true")
+        })
+    }
+)
+public Response getOrder(@PathParam("id") String id) { ... }
+```
+
+The generated YAML for this operation will include:
+
+```yaml
+x-internal-id:
+  value: order-get-by-id
+x-rate-limit-group: read-heavy
+x-audit-required: "true"
+```
+
+### @Schema
+
+Attach extensions to a schema class or property:
+
+```java
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.extensions.Extension;
+import io.swagger.v3.oas.annotations.extensions.ExtensionProperty;
+
+@Schema(
+    description = "Represents a customer order",
+    extensions = {
+        @Extension(properties = {
+            @ExtensionProperty(name = "x-domain-entity", value = "Order"),
+            @ExtensionProperty(name = "x-version-introduced", value = "2.0")
+        })
+    }
+)
+public class Order {
+
+    @Schema(
+        description = "Total amount in the order currency",
+        extensions = @Extension(properties =
+            @ExtensionProperty(name = "x-precision", value = "2")
+        )
+    )
+    private BigDecimal totalAmount;
+}
+```
+
+### @OpenAPIDefinition
+
+Attach extensions at the top level of the OpenAPI document:
+
+```java
+import io.swagger.v3.oas.annotations.OpenAPIDefinition;
+import io.swagger.v3.oas.annotations.extensions.Extension;
+import io.swagger.v3.oas.annotations.extensions.ExtensionProperty;
+import io.swagger.v3.oas.annotations.info.Info;
+
+@OpenAPIDefinition(
+    info = @Info(title = "My API", version = "1.0.0"),
+    extensions = {
+        @Extension(properties = {
+            @ExtensionProperty(name = "x-api-owner", value = "platform-team"),
+            @ExtensionProperty(name = "x-lifecycle-stage", value = "production")
+        })
+    }
+)
+public class OpenAPIConfig { }
+```
+
+## Using parseValue for structured extension data
+
+When `parseValue = true`, Swagger Core parses the `value` string as JSON or YAML and embeds it as a structured object rather than a plain string. This lets you attach arrays, objects, or numbers as extension values.
+
+```java
+@Operation(
+    summary = "Create a product",
+    extensions = @Extension(properties = {
+        @ExtensionProperty(
+            name = "x-allowed-roles",
+            value = "[\"admin\", \"catalog-manager\"]",
+            parseValue = true
+        ),
+        @ExtensionProperty(
+            name = "x-rate-limit",
+            value = "{\"requests\": 100, \"window\": \"1m\"}",
+            parseValue = true
+        )
+    })
+)
+public Response createProduct(Product product) { ... }
+```
+
+The generated output:
+
+```yaml
+x-allowed-roles:
+  - admin
+  - catalog-manager
+x-rate-limit:
+  requests: 100
+  window: 1m
+```
+
+## Extensions via the model API
+
+All major model objects in `io.swagger.v3.oas.models` expose a `Map<String, Object> extensions` field with `getExtensions()`, `setExtensions()`, and an `addExtension(String name, Object value)` helper. Use this when building or modifying an `OpenAPI` object programmatically.
+
+### Schema
+
+```java
+import io.swagger.v3.oas.models.media.Schema;
+
+Schema<String> schema = new Schema<String>()
+    .type("string")
+    .format("email");
+
+schema.addExtension("x-pii", true);
+schema.addExtension("x-validation-group", "contact-fields");
+```
+
+### Operation
+
+```java
+import io.swagger.v3.oas.models.Operation;
+import java.util.Map;
+
+Operation operation = new Operation()
+    .operationId("getOrder")
+    .summary("Retrieve an order");
+
+operation.addExtension("x-internal-id", "order-get");
+operation.setExtensions(Map.of(
+    "x-rate-limit-group", "read-heavy",
+    "x-audit-required", Boolean.TRUE
+));
+```
+
+### PathItem
+
+```java
+import io.swagger.v3.oas.models.PathItem;
+
+PathItem pathItem = new PathItem();
+pathItem.addExtension("x-path-owner", "orders-service");
+```
+
+### OpenAPI root object
+
+```java
+import io.swagger.v3.oas.models.OpenAPI;
+
+OpenAPI openAPI = new OpenAPI();
+openAPI.addExtension("x-api-id", "550e8400-e29b-41d4-a716-446655440000");
+openAPI.addExtension("x-audience", "external-public");
+```
+
+<Tip>
+Extension keys passed to `addExtension()` on model objects do not require the `x-` prefix to be present — but by convention (and per the OpenAPI Specification) extension keys **must** begin with `x-`. Always include the prefix to produce a valid document.
+</Tip>
+
+## Extension naming conventions
+
+| Pattern | Meaning |
+|---|---|
+| `x-{name}` (flat) | `@Extension` with empty `name` and a single `@ExtensionProperty(name = "x-{name}", ...)` |
+| `x-{name}` (grouped) | `@Extension(name = "{name}", properties = { ... })` — all properties nested under the `x-{name}` key |
+| Model API | `addExtension("x-{name}", value)` — value may be any `Object` (String, Boolean, Integer, Map, List) |

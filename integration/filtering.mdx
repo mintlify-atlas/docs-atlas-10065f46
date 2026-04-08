@@ -1,0 +1,312 @@
+---
+title: "Filtering the spec"
+description: "Use OpenAPISpecFilter and SpecFilter to post-process the generated OpenAPI document, removing or transforming paths, operations, parameters, and schemas."
+---
+
+Swagger Core provides a filtering SPI that lets you programmatically modify the `OpenAPI` object before it is serialised and returned to a client. This is the right place to:
+
+- Strip internal or administrative operations from public-facing docs
+- Redact sensitive schema properties
+- Tailor the spec based on request headers (e.g. authentication level)
+
+## The OpenAPISpecFilter interface
+
+Every filter must implement `io.swagger.v3.core.filter.OpenAPISpecFilter`:
+
+```java OpenAPISpecFilter.java
+public interface OpenAPISpecFilter {
+
+    Optional<OpenAPI> filterOpenAPI(
+            OpenAPI openAPI,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers);
+
+    Optional<PathItem> filterPathItem(
+            PathItem pathItem,
+            ApiDescription api,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers);
+
+    Optional<Operation> filterOperation(
+            Operation operation,
+            ApiDescription api,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers);
+
+    Optional<Parameter> filterParameter(
+            Parameter parameter,
+            Operation operation,
+            ApiDescription api,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers);
+
+    Optional<RequestBody> filterRequestBody(
+            RequestBody requestBody,
+            Operation operation,
+            ApiDescription api,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers);
+
+    Optional<ApiResponse> filterResponse(
+            ApiResponse response,
+            Operation operation,
+            ApiDescription api,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers);
+
+    Optional<Schema> filterSchema(
+            Schema schema,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers);
+
+    Optional<Schema> filterSchemaProperty(
+            Schema property,
+            Schema schema,
+            String propName,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers);
+
+    boolean isRemovingUnreferencedDefinitions();
+
+    default boolean isOpenAPI31Filter() {
+        return false;
+    }
+}
+```
+
+Each method receives the current request context (`params`, `cookies`, `headers`) so filters can make per-request decisions. Return `Optional.empty()` to remove the element from the spec; return `Optional.of(element)` to keep it (optionally modified).
+
+## AbstractSpecFilter: a no-op base class
+
+`AbstractSpecFilter` implements every method to return `Optional.of(element)` and `isRemovingUnreferencedDefinitions()` to return `false`. Extend it and override only the methods you need.
+
+```java AbstractSpecFilter.java
+public abstract class AbstractSpecFilter implements OpenAPISpecFilter {
+
+    @Override
+    public Optional<OpenAPI> filterOpenAPI(OpenAPI openAPI, ...) {
+        return Optional.of(openAPI);
+    }
+
+    @Override
+    public Optional<PathItem> filterPathItem(PathItem pathItem, ...) {
+        return Optional.of(pathItem);
+    }
+
+    @Override
+    public Optional<Operation> filterOperation(Operation operation, ...) {
+        return Optional.of(operation);
+    }
+
+    @Override
+    public Optional<Parameter> filterParameter(Parameter parameter, ...) {
+        return Optional.of(parameter);
+    }
+
+    @Override
+    public Optional<RequestBody> filterRequestBody(RequestBody requestBody, ...) {
+        return Optional.of(requestBody);
+    }
+
+    @Override
+    public Optional<ApiResponse> filterResponse(ApiResponse response, ...) {
+        return Optional.of(response);
+    }
+
+    @Override
+    public Optional<Schema> filterSchema(Schema schema, ...) {
+        return Optional.of(schema);
+    }
+
+    @Override
+    public Optional<Schema> filterSchemaProperty(Schema property, Schema schema, String propName, ...) {
+        return Optional.of(property);
+    }
+
+    @Override
+    public boolean isRemovingUnreferencedDefinitions() {
+        return false;
+    }
+}
+```
+
+## How SpecFilter orchestrates filtering
+
+`io.swagger.v3.core.filter.SpecFilter` is the engine that drives the filter pipeline. Its `filter` method clones the `OpenAPI` object and passes each element through the corresponding `OpenAPISpecFilter` method:
+
+```java SpecFilter.java (excerpt)
+public OpenAPI filter(
+        OpenAPI openAPI,
+        OpenAPISpecFilter filter,
+        Map<String, List<String>> params,
+        Map<String, String> cookies,
+        Map<String, List<String>> headers) {
+
+    OpenAPI filteredOpenAPI = filterOpenAPI(filter, openAPI, params, cookies, headers);
+    if (filteredOpenAPI == null) {
+        return filteredOpenAPI;
+    }
+
+    OpenAPI clone = new OpenAPI();
+    // ... copy top-level fields ...
+
+    Paths clonedPaths = new Paths();
+    if (filteredOpenAPI.getPaths() != null) {
+        for (String resourcePath : filteredOpenAPI.getPaths().keySet()) {
+            PathItem pathItem = filteredOpenAPI.getPaths().get(resourcePath);
+
+            PathItem filteredPathItem = filterPathItem(filter, pathItem, resourcePath, params, cookies, headers);
+            PathItem clonedPathItem = cloneFilteredPathItem(filter, filteredPathItem, resourcePath,
+                    params, cookies, headers, allowedTags, filteredTags);
+
+            if (clonedPathItem != null && !clonedPathItem.readOperations().isEmpty()) {
+                clonedPaths.addPathItem(resourcePath, clonedPathItem);
+            }
+        }
+        clone.paths(clonedPaths);
+    }
+
+    if (filter.isRemovingUnreferencedDefinitions()) {
+        clone = removeBrokenReferenceDefinitions(clone);
+    }
+
+    return clone;
+}
+```
+
+The traversal order is:
+
+1. `filterOpenAPI` — the top-level object
+2. `filterPathItem` — each path
+3. `filterOperation` — each HTTP method within a path
+4. `filterParameter` — each parameter on an operation
+5. `filterRequestBody` — the request body
+6. `filterResponse` — each response
+7. `filterSchema` / `filterSchemaProperty` — component schemas and their properties
+
+## Example: remove operations tagged "internal"
+
+```java InternalTagFilter.java
+import io.swagger.v3.core.filter.AbstractSpecFilter;
+import io.swagger.v3.core.model.ApiDescription;
+import io.swagger.v3.oas.models.Operation;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * Removes any operation that carries the "internal" tag,
+ * preventing internal endpoints from appearing in public-facing docs.
+ */
+public class InternalTagFilter extends AbstractSpecFilter {
+
+    @Override
+    public Optional<Operation> filterOperation(
+            Operation operation,
+            ApiDescription api,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers) {
+
+        if (operation.getTags() != null && operation.getTags().contains("internal")) {
+            return Optional.empty(); // exclude this operation
+        }
+        return Optional.of(operation);
+    }
+
+    @Override
+    public boolean isRemovingUnreferencedDefinitions() {
+        // clean up schemas that are no longer referenced after filtering
+        return true;
+    }
+}
+```
+
+## Example: require an Authorization header
+
+The following filter hides all operations unless the request includes a valid `Authorization` header, allowing you to expose a reduced spec to unauthenticated callers.
+
+```java AuthFilter.java
+import io.swagger.v3.core.filter.AbstractSpecFilter;
+import io.swagger.v3.core.model.ApiDescription;
+import io.swagger.v3.oas.models.Operation;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * Returns an empty operation for any request that does not supply
+ * a non-blank Authorization header, effectively hiding all operations
+ * from unauthenticated requests.
+ */
+public class AuthFilter extends AbstractSpecFilter {
+
+    private static final String AUTH_HEADER = "Authorization";
+
+    @Override
+    public Optional<Operation> filterOperation(
+            Operation operation,
+            ApiDescription api,
+            Map<String, List<String>> params,
+            Map<String, String> cookies,
+            Map<String, List<String>> headers) {
+
+        List<String> authValues = headers.get(AUTH_HEADER);
+        if (authValues == null || authValues.isEmpty() || authValues.get(0).isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(operation);
+    }
+}
+```
+
+<Warning>
+Filtering is applied at read time on every request (unless caching is enabled via `cacheTTL`). Keep filter logic fast; avoid blocking I/O inside filter methods.
+</Warning>
+
+## Registering a filter
+
+### Via SwaggerConfiguration (programmatic)
+
+```java
+import io.swagger.v3.oas.integration.SwaggerConfiguration;
+
+SwaggerConfiguration config = new SwaggerConfiguration()
+        .resourcePackages(Set.of("com.example.resources"))
+        .filterClass("com.example.filters.InternalTagFilter");
+
+new JaxrsOpenApiContextBuilder()
+        .openApiConfiguration(config)
+        .buildContext(true);
+```
+
+### Via web.xml init param
+
+```xml web.xml
+<init-param>
+    <param-name>openApi.configuration.filterClass</param-name>
+    <param-value>com.example.filters.InternalTagFilter</param-value>
+</init-param>
+```
+
+### Via openapi-configuration.yaml
+
+```yaml openapi-configuration.yaml
+filterClass: com.example.filters.InternalTagFilter
+resourcePackages:
+  - com.example.resources
+```
+
+<Tip>
+Set `isRemovingUnreferencedDefinitions()` to `true` in your filter when you remove operations or schemas, so that `SpecFilter` automatically cleans up any `$ref` targets in `components/schemas` that are no longer reachable from the filtered paths.
+</Tip>

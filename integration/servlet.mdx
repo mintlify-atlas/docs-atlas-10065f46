@@ -1,0 +1,216 @@
+---
+title: "Servlet integration"
+description: "Serve an OpenAPI spec from a plain servlet container using OpenApiServlet, or automate bootstrap with the SwaggerServletInitializer modules."
+---
+
+`OpenApiServlet` is a plain `HttpServlet` that reads the OpenAPI context built by `ServletOpenApiContextBuilder` and writes the spec to the HTTP response. It does not require a JAX-RS runtime.
+
+## Maven dependency
+
+```xml pom.xml
+<dependency>
+    <groupId>io.swagger.core.v3</groupId>
+    <artifactId>swagger-jaxrs2</artifactId>
+    <version>2.2.x</version>
+</dependency>
+```
+
+## How OpenApiServlet works
+
+When the servlet initialises it calls `ServletOpenApiContextBuilder` to build and register an `OpenApiContext`:
+
+```java OpenApiServlet.java (excerpt)
+@Override
+public void init(ServletConfig config) throws ServletException {
+    super.init(config);
+    String ctxId = getContextIdFromServletConfig(config);
+    try {
+        new ServletOpenApiContextBuilder()
+                .servletConfig(config)
+                .ctxId(ctxId)
+                .buildContext(true);
+    } catch (OpenApiConfigurationException e) {
+        LOGGER.error("Failed to initialize OpenAPI servlet context", e);
+    }
+}
+```
+
+On each `GET` request the servlet:
+
+1. Reads the `OpenAPI` model from the context (`ctx.read()`).
+2. Applies any configured `OpenAPISpecFilter`.
+3. Detects the desired format from the `Accept` header or the request URL suffix (`.yaml` → YAML, otherwise JSON).
+4. Serialises the model and writes it to the response.
+
+## web.xml configuration
+
+```xml web.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app version="3.0"
+         xmlns="http://java.sun.com/xml/ns/javaee"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://java.sun.com/xml/ns/javaee
+                             http://java.sun.com/xml/ns/javaee/web-app_3_0.xsd">
+
+    <servlet>
+        <servlet-name>oas</servlet-name>
+        <servlet-class>io.swagger.v3.jaxrs2.integration.OpenApiServlet</servlet-class>
+
+        <!-- Packages to scan for JAX-RS resources and annotations -->
+        <init-param>
+            <param-name>openApi.configuration.resourcePackages</param-name>
+            <param-value>com.example.resources</param-value>
+        </init-param>
+
+        <!-- Pretty-print the JSON/YAML output -->
+        <init-param>
+            <param-name>openApi.configuration.prettyPrint</param-name>
+            <param-value>true</param-value>
+        </init-param>
+
+        <!-- Optional: produce an OpenAPI 3.1 document -->
+        <init-param>
+            <param-name>openApi.configuration.openAPI31</param-name>
+            <param-value>true</param-value>
+        </init-param>
+
+        <load-on-startup>1</load-on-startup>
+    </servlet>
+
+    <servlet-mapping>
+        <servlet-name>oas</servlet-name>
+        <url-pattern>/openapi/*</url-pattern>
+    </servlet-mapping>
+
+</web-app>
+```
+
+With this mapping:
+
+| Request | Response |
+|---------|----------|
+| `GET /openapi/` with `Accept: application/json` | JSON |
+| `GET /openapi/` with `Accept: application/yaml` | YAML |
+| `GET /openapi/spec.yaml` | YAML (URL suffix wins) |
+
+### Supported init params
+
+All init params are read by `ServletConfigContextUtils`. The most commonly used ones are listed below — for the full list see the [configuration reference](/integration/configuration).
+
+| Init param | Type | Description |
+|-----------|------|-------------|
+| `openApi.configuration.resourcePackages` | `String` (comma-separated) | Packages to scan for resources |
+| `openApi.configuration.resourceClasses` | `String` (comma-separated) | Explicit class names to include |
+| `openApi.configuration.filterClass` | `String` | Fully-qualified `OpenAPISpecFilter` implementation |
+| `openApi.configuration.readerClass` | `String` | Custom `OpenApiReader` implementation |
+| `openApi.configuration.scannerClass` | `String` | Custom scanner implementation |
+| `openApi.configuration.prettyPrint` | `Boolean` | Pretty-print output |
+| `openApi.configuration.cacheTTL` | `Long` | Cache TTL in milliseconds (`-1` = no cache) |
+| `openApi.configuration.sortOutput` | `Boolean` | Sort paths and operations alphabetically |
+| `openApi.configuration.openAPI31` | `Boolean` | Generate an OpenAPI 3.1 document |
+| `openApi.configuration.convertToOpenAPI31` | `Boolean` | Convert a 3.0 spec to 3.1 at serve time |
+| `openApi.configuration.location` | `String` | Path to a config file (`openapi-configuration.yaml`, etc.) |
+
+## Programmatic servlet registration
+
+Register `OpenApiServlet` without `web.xml` using the Servlet 3.x API:
+
+```java AppInitializer.java
+import io.swagger.v3.jaxrs2.integration.OpenApiServlet;
+
+import javax.servlet.ServletContext;
+import javax.servlet.ServletException;
+import javax.servlet.ServletRegistration;
+
+public class AppInitializer implements javax.servlet.ServletContainerInitializer {
+
+    @Override
+    public void onStartup(java.util.Set<Class<?>> c, ServletContext ctx) throws ServletException {
+        ServletRegistration.Dynamic servlet = ctx.addServlet("oas", OpenApiServlet.class);
+        servlet.setInitParameter("openApi.configuration.resourcePackages", "com.example.resources");
+        servlet.setInitParameter("openApi.configuration.prettyPrint", "true");
+        servlet.addMapping("/openapi/*");
+        servlet.setLoadOnStartup(1);
+    }
+}
+```
+
+## Automatic bootstrap with SwaggerServletInitializer
+
+Two separate modules provide a `ServletContainerInitializer` that discovers JAX-RS resources automatically and builds the OpenAPI context without any XML or code configuration.
+
+### Choosing between v1 and v2
+
+<Columns cols={2}>
+  <Card title="swagger-jaxrs2-servlet-initializer" icon="triangle-exclamation">
+    The original initializer. **Deprecated since 2.1.2.** Uses the `javax.servlet` namespace. Prefer v2 for new projects.
+
+    Package: `io.swagger.v3.jaxrs2.integration.SwaggerServletInitializer`
+  </Card>
+  <Card title="swagger-jaxrs2-servlet-initializer-v2" icon="check">
+    The current initializer, introduced in 2.1.2. API-identical to v1 but actively maintained and in the correct package for ongoing development.
+
+    Package: `io.swagger.v3.jaxrs2.integration.servlet.SwaggerServletInitializer`
+  </Card>
+</Columns>
+
+### Dependency (v2 — recommended)
+
+```xml pom.xml
+<dependency>
+    <groupId>io.swagger.core.v3</groupId>
+    <artifactId>swagger-jaxrs2-servlet-initializer-v2</artifactId>
+    <version>2.2.x</version>
+</dependency>
+```
+
+### What the initializer does
+
+Both initializers are annotated with `@HandlesTypes({Path.class, OpenAPIDefinition.class, ApplicationPath.class, Webhooks.class})`. The servlet container passes all matching classes to `onStartup`, which filters out classes from ignored packages and builds a `SwaggerConfiguration` from the discovered set:
+
+```java SwaggerServletInitializer.java (v2 excerpt)
+@HandlesTypes({Path.class, OpenAPIDefinition.class, ApplicationPath.class, Webhooks.class})
+public class SwaggerServletInitializer implements ServletContainerInitializer {
+
+    @Override
+    public void onStartup(Set<Class<?>> classes, ServletContext servletContext) throws ServletException {
+        if (classes != null && !classes.isEmpty()) {
+            Set<Class<?>> resources = new LinkedHashSet();
+            classes.stream()
+                    .filter(c -> ignored.stream().noneMatch(i -> c.getName().startsWith(i)))
+                    .forEach(resources::add);
+            if (!resources.isEmpty()) {
+                try {
+                    SwaggerConfiguration oasConfig = new SwaggerConfiguration()
+                            .resourceClasses(resources.stream().map(Class::getName).collect(Collectors.toSet()));
+
+                    new JaxrsOpenApiContextBuilder()
+                            .openApiConfiguration(oasConfig)
+                            .buildContext(true);
+                } catch (OpenApiConfigurationException e) {
+                    throw new RuntimeException(e.getMessage(), e);
+                }
+            }
+        }
+    }
+}
+```
+
+<Note>
+The initializer only builds the context. It does not register a servlet or expose any HTTP endpoint. You still need to register `OpenApiServlet` or `OpenApiResource` to serve the spec.
+</Note>
+
+## Configuration file lookup order
+
+`XmlWebOpenApiContext` checks the following locations for a configuration file before falling back to init params:
+
+1. The path specified in `openApi.configuration.location` init param
+2. `openapi-configuration.yaml` at the servlet context root
+3. `openapi-configuration.json` at the servlet context root
+4. `WEB-INF/openapi-configuration.yaml`
+5. `WEB-INF/openapi-configuration.json`
+6. `openapi.yaml` at the servlet context root
+7. `openapi.json` at the servlet context root
+8. `WEB-INF/openapi.yaml`
+9. `WEB-INF/openapi.json`
+10. Servlet init params (always checked last)

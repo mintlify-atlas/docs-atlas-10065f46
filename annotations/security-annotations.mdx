@@ -1,0 +1,368 @@
+---
+title: "Security annotations"
+description: "Reference for @SecurityScheme, @SecuritySchemes, @SecurityRequirement, @OAuthFlows, @OAuthFlow, and @OAuthScope — the annotations that define authentication in Swagger Core."
+---
+
+Security annotations do two distinct jobs:
+
+1. **Define** security schemes in `components/securitySchemes` using `@SecurityScheme`.
+2. **Apply** those schemes to individual operations or the whole API using `@SecurityRequirement`.
+
+Both tasks are needed to produce a complete security definition in the OpenAPI document.
+
+---
+
+## @SecurityScheme and @SecuritySchemes
+
+`io.swagger.v3.oas.annotations.security.SecurityScheme`
+`io.swagger.v3.oas.annotations.security.SecuritySchemes`
+
+Registers a security scheme in the `components/securitySchemes` section. Place this annotation on any class (or a dedicated application config class). `@SecurityScheme` is `@Repeatable` via `@SecuritySchemes`.
+
+Targets: `TYPE`, `ANNOTATION_TYPE`.
+
+```java
+public @interface SecurityScheme {
+    SecuritySchemeType type();                              // required
+    String             name()              default "";
+    String             description()       default "";
+    String             paramName()         default "";
+    SecuritySchemeIn   in()                default SecuritySchemeIn.DEFAULT;
+    String             scheme()            default "";
+    String             bearerFormat()      default "";
+    OAuthFlows         flows()             default @OAuthFlows;
+    String             openIdConnectUrl()  default "";
+    Extension[]        extensions()        default {};
+    String             ref()               default "";
+}
+```
+
+### SecuritySchemeType values
+
+| Enum constant | OpenAPI value | Description |
+|---|---|---|
+| `SecuritySchemeType.APIKEY` | `"apiKey"` | API key passed in a header, query parameter, or cookie. |
+| `SecuritySchemeType.HTTP` | `"http"` | HTTP authentication (Basic, Bearer, Digest, etc.). |
+| `SecuritySchemeType.OAUTH2` | `"oauth2"` | OAuth 2.0 with one or more flows. |
+| `SecuritySchemeType.OPENIDCONNECT` | `"openIdConnect"` | OpenID Connect discovery URL. |
+| `SecuritySchemeType.MUTUALTLS` | `"mutualTLS"` | Mutual TLS client certificate authentication. |
+
+### SecuritySchemeIn values
+
+| Enum constant | OpenAPI value | Description |
+|---|---|---|
+| `SecuritySchemeIn.HEADER` | `"header"` | API key delivered in a request header. |
+| `SecuritySchemeIn.QUERY` | `"query"` | API key delivered as a query parameter. |
+| `SecuritySchemeIn.COOKIE` | `"cookie"` | API key delivered in a cookie. |
+
+---
+
+## @OAuthFlows
+
+`io.swagger.v3.oas.annotations.security.OAuthFlows`
+
+Configures one or more OAuth 2.0 flows for a `@SecurityScheme` of type `OAUTH2`. Nested inside `@SecurityScheme#flows()`.
+
+```java
+public @interface OAuthFlows {
+    OAuthFlow   implicit()           default @OAuthFlow();
+    OAuthFlow   password()           default @OAuthFlow();
+    OAuthFlow   clientCredentials()  default @OAuthFlow();
+    OAuthFlow   authorizationCode()  default @OAuthFlow();
+    Extension[] extensions()         default {};
+}
+```
+
+---
+
+## @OAuthFlow
+
+`io.swagger.v3.oas.annotations.security.OAuthFlow`
+
+Configuration details for a single OAuth 2.0 flow.
+
+```java
+public @interface OAuthFlow {
+    String      authorizationUrl() default "";  // implicit, authorizationCode
+    String      tokenUrl()         default "";  // password, clientCredentials, authorizationCode
+    String      refreshUrl()       default "";
+    OAuthScope[] scopes()          default {};
+    Extension[] extensions()       default {};
+}
+```
+
+| Field | Applies to | Description |
+|---|---|---|
+| `authorizationUrl` | `implicit`, `authorizationCode` | URL of the OAuth 2.0 authorization endpoint. |
+| `tokenUrl` | `password`, `clientCredentials`, `authorizationCode` | URL of the OAuth 2.0 token endpoint. |
+| `refreshUrl` | all flows | URL for obtaining a refresh token. |
+| `scopes` | all flows | Available scopes for this flow. |
+
+---
+
+## @OAuthScope
+
+`io.swagger.v3.oas.annotations.security.OAuthScope`
+
+Defines a single OAuth 2.0 scope. Used inside `@OAuthFlow#scopes()`.
+
+```java
+public @interface OAuthScope {
+    String name()        default "";  // scope identifier
+    String description() default "";  // human-readable description
+}
+```
+
+---
+
+## @SecurityRequirement
+
+`io.swagger.v3.oas.annotations.security.SecurityRequirement`
+
+References a scheme registered by `@SecurityScheme` and specifies the required scopes. Can be applied at method level (single operation), class level (all operations in the resource), or inside `@OpenAPIDefinition#security()` (whole API). `@SecurityRequirement` is `@Repeatable`.
+
+Targets: `METHOD`, `TYPE`, `ANNOTATION_TYPE`.
+
+```java
+public @interface SecurityRequirement {
+    String                  name()    default "";
+    String[]                scopes()  default {};
+    SecurityRequirementEntry[] combine() default {};
+}
+```
+
+| Field | Description |
+|---|---|
+| `name` | Must match the `name` field of a declared `@SecurityScheme`. |
+| `scopes` | Required scopes. Leave empty for non-OAuth2 schemes. |
+| `combine` | Use when multiple security schemes must **all** be satisfied simultaneously (AND semantics). Use multiple `@SecurityRequirement` annotations for OR semantics. |
+
+---
+
+## Examples
+
+### API key authentication
+
+Define the scheme on a configuration class, then reference it on each operation.
+
+```java
+import io.swagger.v3.oas.annotations.OpenAPIDefinition;
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeIn;
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
+import io.swagger.v3.oas.annotations.security.SecurityScheme;
+
+@SecurityScheme(
+    name      = "ApiKeyAuth",
+    type      = SecuritySchemeType.APIKEY,
+    in        = SecuritySchemeIn.HEADER,
+    paramName = "X-API-Key",
+    description = "API key passed in the X-API-Key request header"
+)
+@OpenAPIDefinition
+public class ApiConfig {}
+```
+
+Apply the requirement to an operation:
+
+```java
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+
+@GET
+@Path("/data")
+@Operation(summary = "Get protected data")
+@SecurityRequirement(name = "ApiKeyAuth")
+public DataResponse getData() { /* ... */ }
+```
+
+---
+
+### Bearer (JWT) authentication
+
+```java
+@SecurityScheme(
+    name         = "bearerAuth",
+    type         = SecuritySchemeType.HTTP,
+    scheme       = "bearer",
+    bearerFormat = "JWT",
+    description  = "JWT bearer token obtained from the /auth/token endpoint"
+)
+@OpenAPIDefinition
+public class ApiConfig {}
+```
+
+Apply at class level to protect every operation in the resource:
+
+```java
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+
+@SecurityRequirement(name = "bearerAuth")
+@Path("/orders")
+public class OrderResource {
+
+    @GET
+    @Operation(summary = "List orders")
+    public List<Order> list() { /* ... */ }
+
+    @POST
+    @Operation(summary = "Create order")
+    public Response create(CreateOrderRequest req) { /* ... */ }
+}
+```
+
+---
+
+### OAuth 2.0 — implicit flow
+
+```java
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
+import io.swagger.v3.oas.annotations.security.*;
+
+@SecurityScheme(
+    name  = "oauth2Implicit",
+    type  = SecuritySchemeType.OAUTH2,
+    flows = @OAuthFlows(
+        implicit = @OAuthFlow(
+            authorizationUrl = "https://auth.example.com/oauth/authorize",
+            scopes = {
+                @OAuthScope(name = "read:orders",  description = "Read order data"),
+                @OAuthScope(name = "write:orders", description = "Create and update orders")
+            }
+        )
+    )
+)
+@OpenAPIDefinition
+public class ApiConfig {}
+```
+
+---
+
+### OAuth 2.0 — authorization code flow
+
+```java
+@SecurityScheme(
+    name  = "oauth2Code",
+    type  = SecuritySchemeType.OAUTH2,
+    flows = @OAuthFlows(
+        authorizationCode = @OAuthFlow(
+            authorizationUrl = "https://auth.example.com/oauth/authorize",
+            tokenUrl         = "https://auth.example.com/oauth/token",
+            refreshUrl       = "https://auth.example.com/oauth/token",
+            scopes = {
+                @OAuthScope(name = "read:products",  description = "Read product catalogue"),
+                @OAuthScope(name = "write:products", description = "Manage product catalogue"),
+                @OAuthScope(name = "admin",          description = "Administrative access")
+            }
+        )
+    )
+)
+@OpenAPIDefinition
+public class ApiConfig {}
+```
+
+Apply with specific required scopes:
+
+```java
+@DELETE
+@Path("/products/{id}")
+@Operation(summary = "Delete a product")
+@SecurityRequirement(name = "oauth2Code", scopes = {"write:products", "admin"})
+public Response deleteProduct(@PathParam("id") String id) { /* ... */ }
+```
+
+---
+
+### Multiple schemes (OR semantics)
+
+When a caller may authenticate with **either** of two schemes, apply multiple `@SecurityRequirement` annotations. The OpenAPI spec treats multiple requirements as alternatives (OR).
+
+```java
+@GET
+@Path("/reports")
+@Operation(summary = "Download report")
+@SecurityRequirement(name = "ApiKeyAuth")
+@SecurityRequirement(name = "bearerAuth")
+public Response downloadReport() { /* ... */ }
+```
+
+---
+
+### Multiple required schemes simultaneously (AND semantics)
+
+Use `@SecurityRequirement#combine()` when **all listed schemes must be satisfied at the same time**:
+
+```java
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.security.SecurityRequirementEntry;
+
+@POST
+@Path("/sensitive")
+@Operation(summary = "Sensitive operation requiring two auth factors")
+@SecurityRequirement(combine = {
+    @SecurityRequirementEntry(name = "bearerAuth"),
+    @SecurityRequirementEntry(name = "ApiKeyAuth")
+})
+public Response sensitiveAction() { /* ... */ }
+```
+
+---
+
+### Global security via @OpenAPIDefinition
+
+Apply a security requirement to every operation in the entire API by placing it in `@OpenAPIDefinition#security()`. Individual operations can override or remove it with their own `@SecurityRequirement`.
+
+```java
+import io.swagger.v3.oas.annotations.OpenAPIDefinition;
+import io.swagger.v3.oas.annotations.info.Info;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.security.SecurityScheme;
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
+
+@OpenAPIDefinition(
+    info     = @Info(title = "My API", version = "1.0.0"),
+    security = @SecurityRequirement(name = "bearerAuth")
+)
+@SecurityScheme(
+    name         = "bearerAuth",
+    type         = SecuritySchemeType.HTTP,
+    scheme       = "bearer",
+    bearerFormat = "JWT"
+)
+public class Application {}
+```
+
+<Note>
+`@OpenAPIDefinition#security()` sets a default requirement that applies to all operations. An operation can still declare its own `@SecurityRequirement` to narrow or broaden the requirement, or set `security = {}` inside `@Operation` to mark an endpoint as publicly accessible.
+</Note>
+
+---
+
+### Multiple schemes defined together with @SecuritySchemes
+
+```java
+import io.swagger.v3.oas.annotations.security.SecurityScheme;
+import io.swagger.v3.oas.annotations.security.SecuritySchemes;
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeIn;
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
+
+@SecuritySchemes({
+    @SecurityScheme(
+        name         = "bearerAuth",
+        type         = SecuritySchemeType.HTTP,
+        scheme       = "bearer",
+        bearerFormat = "JWT"
+    ),
+    @SecurityScheme(
+        name      = "ApiKeyAuth",
+        type      = SecuritySchemeType.APIKEY,
+        in        = SecuritySchemeIn.HEADER,
+        paramName = "X-API-Key"
+    )
+})
+@OpenAPIDefinition
+public class ApiConfig {}
+```
+
+<Tip>
+Centralise all `@SecurityScheme` definitions on a single application config class or a dedicated `SecurityConfig` class. This keeps scheme definitions in one place and avoids duplication across multiple resource classes.
+</Tip>

@@ -1,0 +1,194 @@
+---
+title: "OpenApiScanner API"
+description: "Interfaces and built-in implementations for discovering resource classes and additional resource objects to pass to the OpenAPI reader."
+---
+
+Scanners are responsible for discovering the set of classes (and optional extra resources) that the `OpenApiReader` should process to build the `OpenAPI` document. The scanner runs each time `OpenApiContext.read()` is called (respecting the cache TTL).
+
+---
+
+## `OpenApiScanner` interface
+
+**Package:** `io.swagger.v3.oas.integration.api`
+
+```java
+public interface OpenApiScanner {
+
+    void setConfiguration(OpenAPIConfiguration openApiConfiguration);
+
+    Set<Class<?>> classes();
+
+    Map<String, Object> resources();
+}
+```
+
+### Methods
+
+<ParamField path="setConfiguration" type="void">
+  Called by `GenericOpenApiContext` immediately after the scanner is instantiated. Provides the effective `OpenAPIConfiguration` so the scanner can read `resourcePackages`, `resourceClasses`, and other settings.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `openApiConfiguration` | `OpenAPIConfiguration` | The resolved configuration for this context. |
+</ParamField>
+
+<ParamField path="classes" type="Set&lt;Class&lt;?&gt;&gt;">
+  Returns the set of classes to pass to the reader. The reader will process annotations on these classes to build paths, operations, and component schemas.
+</ParamField>
+
+<ParamField path="resources" type="Map&lt;String, Object&gt;">
+  Returns additional named resources (e.g., JAX-RS `Application` instances or pre-built partial `OpenAPI` fragments) to pass to the reader. The generic scanner returns an empty map; JAX-RS scanners populate this with JAX-RS application metadata.
+</ParamField>
+
+---
+
+## Built-in scanners
+
+### `GenericOpenApiScanner`
+
+**Package:** `io.swagger.v3.oas.integration`  
+**Default scanner** — used when no `scannerClass` is configured.
+
+Uses [ClassGraph](https://github.com/classgraph/classgraph) to scan the classpath for classes annotated with `@OpenAPIDefinition` or `@Webhooks`.
+
+**Discovery logic:**
+
+1. If `resourceClasses` is set on the configuration, load those classes directly and return them — no classpath scan is performed.
+2. If `resourcePackages` is set, restrict the ClassGraph scan to those packages.
+3. Otherwise scan all packages (`allowAllPackages = true`).
+4. Collect all classes annotated with `@OpenAPIDefinition` or `@Webhooks` that fall within the accepted packages.
+
+The following packages are always excluded (defined in `IgnoredPackages`):
+
+- `io.swagger`
+- `com.sun.jersey`
+- `com.sun.research.ws.wadl`
+- `javax.ws.rs`
+- `jakarta.ws.rs`
+- Java standard library packages
+
+```java
+public class GenericOpenApiScanner implements OpenApiScanner {
+
+    @Override
+    public void setConfiguration(OpenAPIConfiguration openApiConfiguration) { ... }
+
+    @Override
+    public Set<Class<?>> classes() { ... }
+
+    @Override
+    public Map<String, Object> resources() {
+        return new HashMap<>(); // no extra resources
+    }
+}
+```
+
+### JAX-RS scanners
+
+The following scanners are provided by the `swagger-jaxrs2` module and extend the generic scanner with JAX-RS-specific discovery:
+
+| Class | Description |
+|-------|-------------|
+| `JaxrsAnnotationScanner` | Scans for classes carrying JAX-RS `@Path` annotations. |
+| `JaxrsApplicationScanner` | Discovers classes by introspecting a JAX-RS `Application.getClasses()` / `getSingletons()`. |
+| `JaxrsApplicationAndAnnotationScanner` | Combines both strategies: inspects the `Application` object and supplements with `@Path`-annotated classes found on the classpath. |
+
+Configure via `scannerClass`:
+
+```java
+SwaggerConfiguration config = new SwaggerConfiguration()
+    .scannerClass("io.swagger.v3.jaxrs2.integration.JaxrsAnnotationScanner");
+```
+
+---
+
+## How scanners interact with the reader
+
+`GenericOpenApiContext.read()` calls the scanner and reader in sequence:
+
+```java
+OpenAPI openAPI = getOpenApiReader().read(
+        getOpenApiScanner().classes(),
+        getOpenApiScanner().resources());
+```
+
+The scanner provides the class set; the reader processes annotations on those classes and merges the result with the seed `OpenAPI` from the configuration.
+
+When `cacheTTL = 0`, `resetReader()` is also called before each read, ensuring the reader is rebuilt from the current configuration.
+
+---
+
+## Custom scanner
+
+Implement `OpenApiScanner` to replace the discovery mechanism entirely:
+
+```java
+import io.swagger.v3.oas.integration.api.OpenAPIConfiguration;
+import io.swagger.v3.oas.integration.api.OpenApiScanner;
+
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Scanner that reads resource class names from a database table
+ * instead of scanning the classpath.
+ */
+public class DatabaseDrivenScanner implements OpenApiScanner {
+
+    private OpenAPIConfiguration configuration;
+
+    @Override
+    public void setConfiguration(OpenAPIConfiguration configuration) {
+        this.configuration = configuration;
+    }
+
+    @Override
+    public Set<Class<?>> classes() {
+        // e.g., load class names from DB and resolve them
+        Set<String> classNames = ResourceClassRepository.findAll();
+        Set<Class<?>> result = new java.util.HashSet<>();
+        for (String name : classNames) {
+            try {
+                result.add(Class.forName(name));
+            } catch (ClassNotFoundException e) {
+                // log and skip
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public Map<String, Object> resources() {
+        return new java.util.HashMap<>();
+    }
+}
+```
+
+Register via `SwaggerConfiguration`:
+
+```java
+SwaggerConfiguration config = new SwaggerConfiguration()
+    .resourcePackages(Set.of("com.example.api"))
+    .scannerClass("com.example.DatabaseDrivenScanner");
+```
+
+Or set the scanner instance directly on the context before initialization:
+
+```java
+GenericOpenApiContext ctx = new GenericOpenApiContext<>();
+ctx.setOpenApiScanner(new DatabaseDrivenScanner());
+ctx.openApiConfiguration(config).init();
+```
+
+---
+
+## Scanner configuration reference
+
+These `SwaggerConfiguration` fields affect scanner behaviour:
+
+| Field | Type | Effect |
+|-------|------|--------|
+| `scannerClass` | `String` | Fully-qualified class name of the scanner to use. Defaults to `GenericOpenApiScanner`. |
+| `resourcePackages` | `Set<String>` | Packages passed to the scanner for classpath-scoped discovery. |
+| `resourceClasses` | `Set<String>` | Explicit class names; when set, `GenericOpenApiScanner` skips the classpath scan entirely. |
+| `readAllResources` | `Boolean` | Passed to the reader; when `false` the reader ignores methods without `@Operation`. Does not affect the scanner itself. |

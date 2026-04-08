@@ -1,0 +1,312 @@
+---
+title: "Jackson integration"
+description: "How Swagger Core uses Jackson to serialize and deserialize OpenAPI documents, and how to customize the ObjectMapper used for JSON and YAML output."
+---
+
+Swagger Core uses Jackson for all OpenAPI object serialization and deserialization. Two pre-configured `ObjectMapper` singletons are provided — one for JSON and one for YAML — together with a module (`SwaggerModule`) that installs the required annotation introspector.
+
+## `SwaggerModule`
+
+**Package:** `io.swagger.v3.core.jackson`
+
+A Jackson `SimpleModule` that registers `SwaggerAnnotationIntrospector` into the annotation-introspector chain. The introspector enables Jackson to read Swagger/OAS annotations (e.g., `@Schema`, `@Operation`) during serialization.
+
+```java
+public class SwaggerModule extends SimpleModule {
+
+    public SwaggerModule() {
+        super(PackageVersion.VERSION);
+    }
+
+    @Override
+    public void setupModule(SetupContext context) {
+        super.setupModule(context);
+        context.insertAnnotationIntrospector(new SwaggerAnnotationIntrospector());
+    }
+}
+```
+
+### Registering `SwaggerModule`
+
+Register the module on any `ObjectMapper` that must serialize or deserialize OAS model objects:
+
+```java
+ObjectMapper mapper = new ObjectMapper();
+mapper.registerModule(new SwaggerModule());
+```
+
+The singleton mappers returned by `Json.mapper()` and `Yaml.mapper()` are pre-configured by `ObjectMapperFactory` and do not require manual registration.
+
+---
+
+## `Json` utility class
+
+**Package:** `io.swagger.v3.core.util`
+
+Provides a lazily-initialized, fully-configured `ObjectMapper` singleton for JSON serialization of OpenAPI 3.0 objects.
+
+```java
+public class Json {
+    public static ObjectMapper mapper()
+    public static ObjectWriter pretty()
+    public static String pretty(Object o)
+    public static void prettyPrint(Object o)
+}
+```
+
+### Methods
+
+<ParamField path="mapper" type="ObjectMapper">
+  Returns the shared `ObjectMapper` instance configured for OpenAPI 3.0 JSON output. The instance is created via `ObjectMapperFactory.createJson()` on first access (thread-safe holder pattern).
+</ParamField>
+
+<ParamField path="pretty()" type="ObjectWriter">
+  Returns an `ObjectWriter` that uses `DefaultPrettyPrinter` for human-readable JSON output.
+</ParamField>
+
+<ParamField path="pretty(Object)" type="String">
+  Serializes the given object to a pretty-printed JSON string. Returns `null` and logs the error if serialization fails.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `o` | `Object` | The object to serialize (typically an `OpenAPI` instance). |
+</ParamField>
+
+<ParamField path="prettyPrint(Object)" type="void">
+  Serializes and emits the object via the SLF4J logger (useful for debugging). Strips carriage-return characters from the output.
+</ParamField>
+
+### Usage
+
+```java
+import io.swagger.v3.core.util.Json;
+import io.swagger.v3.oas.models.OpenAPI;
+
+OpenAPI openAPI = context.read();
+
+// Compact JSON
+String compact = Json.mapper().writeValueAsString(openAPI);
+
+// Pretty-printed JSON string
+String pretty = Json.pretty(openAPI);
+
+// Pretty-printed JSON via ObjectWriter
+String alsoJson = Json.pretty().writeValueAsString(openAPI);
+```
+
+---
+
+## `Yaml` utility class
+
+**Package:** `io.swagger.v3.core.util`
+
+Mirrors `Json` but produces YAML output. Uses a `YAMLFactory` configured to suppress the document-start marker (`---`), minimize quotes, split long lines, and always quote numbers as strings.
+
+```java
+public class Yaml {
+    public static ObjectMapper mapper()
+    public static ObjectWriter pretty()
+    public static String pretty(Object o)
+    public static void prettyPrint(Object o)
+}
+```
+
+### Methods
+
+<ParamField path="mapper" type="ObjectMapper">
+  Returns the shared `ObjectMapper` singleton for OpenAPI 3.0 YAML output.
+</ParamField>
+
+<ParamField path="pretty()" type="ObjectWriter">
+  Returns an `ObjectWriter` with `DefaultPrettyPrinter` for readable YAML output.
+</ParamField>
+
+<ParamField path="pretty(Object)" type="String">
+  Serializes the given object to a pretty-printed YAML string.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `o` | `Object` | The object to serialize. |
+</ParamField>
+
+<ParamField path="prettyPrint(Object)" type="void">
+  Serializes and emits the object via the SLF4J logger.
+</ParamField>
+
+### Usage
+
+```java
+import io.swagger.v3.core.util.Yaml;
+import io.swagger.v3.oas.models.OpenAPI;
+
+OpenAPI openAPI = context.read();
+
+// YAML string
+String yaml = Yaml.pretty(openAPI);
+
+// Via ObjectWriter
+String alsoYaml = Yaml.pretty().writeValueAsString(openAPI);
+```
+
+---
+
+## OpenAPI 3.1 variants
+
+For OpenAPI 3.1 documents use `Json31` and `Yaml31`, which configure the mapper with the 3.1-specific mixins and serializers.
+
+```java
+import io.swagger.v3.core.util.Json31;
+import io.swagger.v3.core.util.Yaml31;
+
+String json31  = Json31.pretty(openAPI);
+String yaml31  = Yaml31.pretty(openAPI);
+ObjectMapper m = Json31.mapper();
+```
+
+---
+
+## `ObjectMapperFactory`
+
+**Package:** `io.swagger.v3.core.util`
+
+Constructs fully-configured `ObjectMapper` instances. Both `Json.mapper()` and `Yaml.mapper()` are backed by instances created here. You can create additional mappers when you need a copy with custom configuration.
+
+```java
+public class ObjectMapperFactory {
+    public static ObjectMapper createJson()
+    public static ObjectMapper createJson(JsonFactory jsonFactory)
+    public static ObjectMapper createYaml()
+    public static ObjectMapper createYaml(YAMLFactory yamlFactory)
+    public static ObjectMapper createYaml(boolean openapi31)
+    public static ObjectMapper createJson31()
+    public static ObjectMapper createJson31(JsonFactory jsonFactory)
+    public static ObjectMapper createYaml31()
+    public static ObjectMapper createYaml31(YAMLFactory yamlFactory)
+    public static ObjectMapper create(JsonFactory jsonFactory, boolean openapi31)
+    public static ObjectMapper createJsonConverter()
+}
+```
+
+Every mapper produced by `ObjectMapperFactory` is configured with:
+
+- `SerializationFeature.FAIL_ON_EMPTY_BEANS` → `false`
+- `SerializationFeature.WRITE_DATES_AS_TIMESTAMPS` → `false`
+- `SerializationFeature.WRITE_ENUMS_USING_TO_STRING` → `true`
+- `DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES` → `false`
+- `SerializationFeature.WRITE_NULL_MAP_VALUES` → `false`
+- `SerializationFeature.WRITE_BIGDECIMAL_AS_PLAIN` → `true`
+- `JsonInclude.NON_NULL` serialization inclusion
+- OAS model mixins (OpenAPI 3.0 or 3.1 depending on the variant)
+- Custom serializers for `Schema`, `MediaType`, and `Example`
+- `DeserializationModule` or `DeserializationModule31` for model deserialization
+- `JavaTimeModule` for `java.time` support
+
+---
+
+## JSON and YAML output endpoints
+
+When using the Servlet or JAX-RS integration, `GenericOpenApiContext` initializes separate output mappers (`outputJsonMapper`, `outputYamlMapper`) from the same factory. These output mappers can be replaced via `setOutputJsonMapper` / `setOutputYamlMapper` on the context, or by implementing `ObjectMapperProcessor`.
+
+```java
+// Typical JAX-RS endpoint pattern
+@GET
+@Path("/openapi.json")
+@Produces(MediaType.APPLICATION_JSON)
+public Response getOpenApiJson() throws Exception {
+    OpenApiContext ctx = new GenericOpenApiContextBuilder<>()
+            .openApiConfiguration(config)
+            .buildContext(true);
+    OpenAPI oas = ctx.read();
+    return Response.ok(ctx.getOutputJsonMapper().writeValueAsString(oas)).build();
+}
+
+@GET
+@Path("/openapi.yaml")
+@Produces("application/yaml")
+public Response getOpenApiYaml() throws Exception {
+    OpenApiContext ctx = new GenericOpenApiContextBuilder<>()
+            .openApiConfiguration(config)
+            .buildContext(true);
+    OpenAPI oas = ctx.read();
+    return Response.ok(ctx.getOutputYamlMapper().writeValueAsString(oas)).build();
+}
+```
+
+---
+
+## `ObjectMapperProcessor` SPI
+
+**Package:** `io.swagger.v3.oas.integration.api`
+
+An SPI interface (since 2.0.6) that lets you customize the `ObjectMapper` instances used by the integration layer — both the mapper used to resolve models and the mappers used to serialize API output.
+
+```java
+public interface ObjectMapperProcessor {
+
+    default void processJsonObjectMapper(ObjectMapper mapper) {}
+
+    /**
+     * @deprecated since 2.0.7, no-op
+     */
+    @Deprecated
+    default void processYamlObjectMapper(ObjectMapper mapper) {}
+
+    /** @since 2.1.6 */
+    default void processOutputJsonObjectMapper(ObjectMapper mapper) {}
+
+    /** @since 2.1.6 */
+    default void processOutputYamlObjectMapper(ObjectMapper mapper) {
+        processOutputJsonObjectMapper(mapper);
+    }
+}
+```
+
+<ParamField path="processJsonObjectMapper" type="void">
+  Called with the `ObjectMapper` used for model resolution (passed to a new `ModelResolver`). Customize serialization modules or features here to affect how Java types are introspected.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `mapper` | `ObjectMapper` | A fresh JSON `ObjectMapper` created by `IntegrationObjectMapperFactory`. |
+</ParamField>
+
+<ParamField path="processOutputJsonObjectMapper" type="void">
+  Called with the output JSON mapper (since 2.1.6). Use this to add modules or change features on the mapper that serializes the final `OpenAPI` document to JSON.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `mapper` | `ObjectMapper` | The output JSON `ObjectMapper`. |
+</ParamField>
+
+<ParamField path="processOutputYamlObjectMapper" type="void">
+  Called with the output YAML mapper (since 2.1.6). The default implementation delegates to `processOutputJsonObjectMapper`.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `mapper` | `ObjectMapper` | The output YAML `ObjectMapper`. |
+</ParamField>
+
+### Example implementation
+
+```java
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import io.swagger.v3.oas.integration.api.ObjectMapperProcessor;
+
+/**
+ * Sorts all map entries alphabetically in JSON and YAML output.
+ */
+public class SortingObjectMapperProcessor implements ObjectMapperProcessor {
+
+    @Override
+    public void processOutputJsonObjectMapper(ObjectMapper mapper) {
+        mapper.enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
+    }
+}
+```
+
+Register via `SwaggerConfiguration`:
+
+```java
+SwaggerConfiguration config = new SwaggerConfiguration()
+    .objectMapperProcessorClass("com.example.SortingObjectMapperProcessor");
+```

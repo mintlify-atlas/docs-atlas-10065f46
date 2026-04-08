@@ -1,0 +1,264 @@
+---
+title: "Configuration reference"
+description: "Complete reference for all SwaggerConfiguration fields, file-based configuration, and programmatic setup."
+---
+
+`SwaggerConfiguration` is the primary implementation of the `OpenAPIConfiguration` interface. Every field has a fluent setter so you can chain calls when building the configuration programmatically.
+
+```java
+import io.swagger.v3.oas.integration.SwaggerConfiguration;
+```
+
+## All configuration fields
+
+<ParamField path="openAPI" type="OpenAPI">
+  A base `OpenAPI` object that is merged with the spec generated from scanning. Use it to set top-level metadata such as `info`, `servers`, and `security` without annotating every resource class.
+
+  ```java
+  new SwaggerConfiguration()
+      .openAPI(new OpenAPI()
+          .info(new Info().title("My API").version("1.0.0"))
+          .addServersItem(new Server().url("https://api.example.com")));
+  ```
+</ParamField>
+
+<ParamField path="resourcePackages" type="Set<String>">
+  Package names to scan for JAX-RS resource classes and `ReaderListener` implementations. All sub-packages are included recursively.
+
+  ```java
+  new SwaggerConfiguration()
+      .resourcePackages(Set.of("com.example.resources", "com.example.webhooks"));
+  ```
+</ParamField>
+
+<ParamField path="resourceClasses" type="Set<String>">
+  Fully-qualified class names to include in the scan. Use this when you need to include specific classes without scanning an entire package.
+
+  ```java
+  new SwaggerConfiguration()
+      .resourceClasses(Set.of("com.example.resources.PetResource"));
+  ```
+</ParamField>
+
+<ParamField path="filterClass" type="String">
+  Fully-qualified class name of an `OpenAPISpecFilter` implementation. The filter is instantiated via reflection and applied to the spec on every request. See [Filtering the spec](/integration/filtering) for details.
+
+  ```java
+  new SwaggerConfiguration()
+      .filterClass("com.example.filters.InternalTagFilter");
+  ```
+</ParamField>
+
+<ParamField path="readerClass" type="String">
+  Fully-qualified class name of a custom `OpenApiReader` implementation. Override this to replace the default annotation reader with your own logic.
+</ParamField>
+
+<ParamField path="scannerClass" type="String">
+  Fully-qualified class name of a custom scanner implementation. Override this to control which classes are presented to the reader for annotation processing.
+</ParamField>
+
+<ParamField path="prettyPrint" type="Boolean" default="false">
+  When `true`, the JSON and YAML output is formatted with indentation. Useful during development; disable in production to reduce response size.
+
+  ```java
+  new SwaggerConfiguration().prettyPrint(true);
+  ```
+</ParamField>
+
+<ParamField path="readAllResources" type="Boolean" default="true">
+  When `true` (the default), the reader processes all methods in scanned classes, including those without an `@Operation` annotation. Set to `false` to include only methods explicitly annotated with `@Operation`.
+
+  ```java
+  new SwaggerConfiguration().readAllResources(false);
+  ```
+</ParamField>
+
+<ParamField path="ignoredRoutes" type="Collection<String>">
+  Path prefixes to exclude from the generated spec. Any path that starts with one of these strings is omitted from the `paths` section.
+
+  ```java
+  new SwaggerConfiguration()
+      .ignoredRoutes(List.of("/internal", "/admin"));
+  ```
+</ParamField>
+
+<ParamField path="cacheTTL" type="Long" default="-1">
+  Time-to-live for the cached `OpenAPI` object in milliseconds. A value of `-1` disables caching (the spec is regenerated on every request). Set a positive value to improve throughput in production.
+
+  ```java
+  new SwaggerConfiguration().cacheTTL(60_000L); // cache for 60 seconds
+  ```
+</ParamField>
+
+<ParamField path="modelConverterClasses" type="Set<String>">
+  Fully-qualified class names of custom `ModelConverter` implementations. Converters are registered with Jackson's `ModelConverters` singleton during context initialisation. Added in 2.0.6.
+
+  ```java
+  new SwaggerConfiguration()
+      .modelConverterClasses(Set.of("com.example.converters.MyModelConverter"));
+  ```
+</ParamField>
+
+<ParamField path="objectMapperProcessorClass" type="String">
+  Fully-qualified class name of a custom `ObjectMapperProcessor` implementation used to post-process the Jackson `ObjectMapper` used for serialisation. Added in 2.0.6.
+</ParamField>
+
+<ParamField path="sortOutput" type="Boolean" default="false">
+  When `true`, paths and operations in the output are sorted alphabetically. Added in 2.1.6.
+
+  ```java
+  new SwaggerConfiguration().sortOutput(true);
+  ```
+</ParamField>
+
+<ParamField path="openAPI31" type="Boolean" default="false">
+  When `true`, the spec is generated using OpenAPI 3.1 semantics (e.g. JSON Schema vocabulary, `webhooks`, etc.). Added in 2.1.9.
+
+  ```java
+  new SwaggerConfiguration().openAPI31(true);
+  ```
+</ParamField>
+
+<ParamField path="convertToOpenAPI31" type="Boolean">
+  When `true`, a spec generated using OpenAPI 3.0 rules is automatically converted to OpenAPI 3.1 format before being returned. Setting this field also sets `openAPI31` to `true`. Added in 2.2.12.
+
+  ```java
+  new SwaggerConfiguration().convertToOpenAPI31(true);
+  ```
+</ParamField>
+
+<ParamField path="schemaResolution" type="Schema.SchemaResolution" default="DEFAULT">
+  Controls how schemas are resolved and inlined. Available values are defined in `io.swagger.v3.oas.models.media.Schema.SchemaResolution`. Added in 2.2.24.
+</ParamField>
+
+<ParamField path="defaultResponseCode" type="String">
+  The HTTP status code string used when generating a default response if none is explicitly declared on a method (e.g. `"200"`, `"default"`). Added in 2.2.17.
+
+  ```java
+  new SwaggerConfiguration().defaultResponseCode("200");
+  ```
+</ParamField>
+
+## Programmatic configuration example
+
+```java AppBootstrap.java
+import io.swagger.v3.jaxrs2.integration.JaxrsOpenApiContextBuilder;
+import io.swagger.v3.oas.integration.SwaggerConfiguration;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.info.License;
+import io.swagger.v3.oas.models.servers.Server;
+
+import java.util.List;
+import java.util.Set;
+
+public class AppBootstrap {
+
+    public void configure() throws Exception {
+        OpenAPI openAPI = new OpenAPI()
+                .info(new Info()
+                        .title("Pet Store API")
+                        .version("1.0.0")
+                        .license(new License().name("Apache 2.0").url("https://www.apache.org/licenses/LICENSE-2.0")))
+                .servers(List.of(new Server().url("https://api.example.com")));
+
+        SwaggerConfiguration config = new SwaggerConfiguration()
+                .openAPI(openAPI)
+                .resourcePackages(Set.of("com.example.resources"))
+                .prettyPrint(true)
+                .cacheTTL(30_000L)
+                .readAllResources(true)
+                .sortOutput(true)
+                .filterClass("com.example.filters.MySpecFilter");
+
+        new JaxrsOpenApiContextBuilder()
+                .openApiConfiguration(config)
+                .buildContext(true);
+    }
+}
+```
+
+## File-based configuration
+
+The integration layer looks for a configuration file on the classpath or in the servlet context. Supported file names (searched in order):
+
+1. `openapi-configuration.yaml`
+2. `openapi-configuration.json`
+3. `WEB-INF/openapi-configuration.yaml`
+4. `WEB-INF/openapi-configuration.json`
+
+You can also point to a specific file with the `openApi.configuration.location` init param.
+
+<Tabs>
+  <Tab title="YAML">
+    ```yaml openapi-configuration.yaml
+    resourcePackages:
+      - com.example.resources
+    prettyPrint: true
+    cacheTTL: 30000
+    readAllResources: true
+    sortOutput: true
+    openAPI:
+      info:
+        title: Pet Store API
+        version: 1.0.0
+        license:
+          name: Apache 2.0
+          url: https://www.apache.org/licenses/LICENSE-2.0
+      servers:
+        - url: https://api.example.com
+    ```
+  </Tab>
+  <Tab title="JSON">
+    ```json openapi-configuration.json
+    {
+        "resourcePackages": [
+            "com.example.resources"
+        ],
+        "prettyPrint": true,
+        "cacheTTL": 30000,
+        "readAllResources": true,
+        "openAPI": {
+            "info": {
+                "title": "Pet Store API",
+                "version": "1.0.0",
+                "license": {
+                    "name": "Apache 2.0",
+                    "url": "https://www.apache.org/licenses/LICENSE-2.0"
+                }
+            },
+            "servers": [
+                { "url": "https://api.example.com" }
+            ]
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+All `SwaggerConfiguration` fields that have a JSON/YAML-serialisable type can be specified in the configuration file. The file is deserialised into a `SwaggerConfiguration` instance using Jackson.
+</Note>
+
+## Init param keys (servlet / JAX-RS)
+
+When configuring via `web.xml` init params or Jersey scan params, the following keys map to `SwaggerConfiguration` fields:
+
+| Init param key | SwaggerConfiguration field |
+|---------------|---------------------------|
+| `openApi.configuration.resourcePackages` | `resourcePackages` |
+| `openApi.configuration.resourceClasses` | `resourceClasses` |
+| `openApi.configuration.filterClass` | `filterClass` |
+| `openApi.configuration.readerClass` | `readerClass` |
+| `openApi.configuration.scannerClass` | `scannerClass` |
+| `openApi.configuration.prettyPrint` | `prettyPrint` |
+| `openApi.configuration.readAllResources` | `readAllResources` |
+| `openApi.configuration.cacheTTL` | `cacheTTL` |
+| `openApi.configuration.sortOutput` | `sortOutput` |
+| `openApi.configuration.openAPI31` | `openAPI31` |
+| `openApi.configuration.convertToOpenAPI31` | `convertToOpenAPI31` |
+| `openApi.configuration.objectMapperProcessorClass` | `objectMapperProcessorClass` |
+| `openApi.configuration.modelConverterClasses` | `modelConverterClasses` |
+| `openApi.configuration.defaultResponseCode` | `defaultResponseCode` |
+| `openApi.configuration.schemaResolution` | `schemaResolution` |
+| `openApi.configuration.location` | config file location |

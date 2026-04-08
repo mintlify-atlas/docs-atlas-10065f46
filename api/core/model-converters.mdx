@@ -1,0 +1,376 @@
+---
+title: "ModelConverter API"
+description: "Interfaces and classes for plugging custom type-to-Schema converters into the Swagger Core resolution pipeline."
+---
+
+The model converter pipeline transforms Java types into OpenAPI `Schema` objects. Each converter in the chain may handle a type or delegate to the next converter by calling `chain.next()`.
+
+## `ModelConverter` interface
+
+**Package:** `io.swagger.v3.core.converter`
+
+The primary SPI for contributing custom schema resolution logic.
+
+```java
+public interface ModelConverter {
+
+    Schema resolve(AnnotatedType type, ModelConverterContext context, Iterator<ModelConverter> chain);
+
+    default boolean isOpenapi31() {
+        return false;
+    }
+}
+```
+
+### Methods
+
+<ParamField path="resolve" type="Schema">
+  Attempts to convert the given annotated type to a `Schema`. Return `null` when this converter cannot handle the type — the framework will advance the iterator and try the next converter.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `type` | `AnnotatedType` | The type to resolve, including contextual annotations. |
+  | `context` | `ModelConverterContext` | Shared context for registering named schemas and resolving other types. |
+  | `chain` | `Iterator<ModelConverter>` | The remaining converters to try; call `chain.next().resolve(...)` to delegate. |
+</ParamField>
+
+<ParamField path="isOpenapi31" type="boolean">
+  Indicates whether this converter produces OpenAPI 3.1-compatible schemas. The default implementation returns `false`.
+</ParamField>
+
+---
+
+## `ModelConverterContext` interface
+
+**Package:** `io.swagger.v3.core.converter`
+
+Passed to every `ModelConverter.resolve()` call. Used to register named component schemas and to recursively resolve referenced types.
+
+```java
+public interface ModelConverterContext {
+
+    void defineModel(String name, Schema model);
+
+    void defineModel(String name, Schema model, AnnotatedType type, String prevName);
+
+    void defineModel(String name, Schema model, Type type, String prevName);
+
+    Schema resolve(AnnotatedType type);
+
+    Map<String, Schema> getDefinedModels();
+
+    Iterator<ModelConverter> getConverters();
+}
+```
+
+### Methods
+
+<ParamField path="defineModel(String, Schema)" type="void">
+  Registers a named schema so it can be referenced by other schemas (e.g., via `$ref`). Call this whenever a model is defined that may be referenced elsewhere.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `name` | `String` | The component schema name. |
+  | `model` | `Schema` | The schema to register. |
+</ParamField>
+
+<ParamField path="defineModel(String, Schema, AnnotatedType, String)" type="void">
+  Registers a schema with additional context for deduplication and renaming.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `name` | `String` | The component schema name. |
+  | `model` | `Schema` | The schema to register. |
+  | `type` | `AnnotatedType` | The annotated type that produced this schema. |
+  | `prevName` | `String` | A previous name for the schema, if it was renamed (may be `null`). |
+</ParamField>
+
+<ParamField path="defineModel(String, Schema, Type, String)" type="void">
+  Variant of `defineModel` that accepts a raw `java.lang.reflect.Type` instead of an `AnnotatedType`.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `name` | `String` | The component schema name. |
+  | `model` | `Schema` | The schema to register. |
+  | `type` | `Type` | The raw Java type that produced this schema. |
+  | `prevName` | `String` | A previous name for the schema, if it was renamed (may be `null`). |
+</ParamField>
+
+<ParamField path="resolve" type="Schema">
+  Resolves an `AnnotatedType` to a `Schema` using the full converter chain. Referenced schemas are defined in the context as a side-effect.
+
+  | Parameter | Type | Description |
+  |-----------|------|-------------|
+  | `type` | `AnnotatedType` | The type to resolve. |
+</ParamField>
+
+<ParamField path="getDefinedModels" type="Map&lt;String, Schema&gt;">
+  Returns all named schemas registered so far during this resolution pass.
+</ParamField>
+
+<ParamField path="getConverters" type="Iterator&lt;ModelConverter&gt;">
+  Returns a fresh iterator over the registered converters. Each call returns a new iterator positioned at the start of the chain.
+</ParamField>
+
+---
+
+## `AnnotatedType`
+
+**Package:** `io.swagger.v3.core.converter`
+
+A value object that wraps a `java.lang.reflect.Type` together with all contextual metadata required for schema resolution. All setters follow a fluent pattern and return `this`.
+
+```java
+public class AnnotatedType {
+    public AnnotatedType() {}
+    public AnnotatedType(Type type) {}
+}
+```
+
+### Fields and fluent setters
+
+<ParamField path="type" type="Type">
+  The `java.lang.reflect.Type` being resolved. Fluent setter: `type(Type)`.
+</ParamField>
+
+<ParamField path="name" type="String">
+  An override for the schema name. Fluent setter: `name(String)`.
+</ParamField>
+
+<ParamField path="parent" type="Schema">
+  The containing schema when this type is being resolved as a property. Fluent setter: `parent(Schema)`.
+</ParamField>
+
+<ParamField path="ctxAnnotations" type="Annotation[]">
+  Contextual annotations (e.g., field-level annotations from the parent class) that supplement the type's own annotations. Stored defensively as a copy. Fluent setter: `ctxAnnotations(Annotation[])`.
+</ParamField>
+
+<ParamField path="jsonUnwrappedHandler" type="Function&lt;AnnotatedType, Schema&gt;">
+  A callback invoked when a `@JsonUnwrapped` property is encountered. Fluent setter: `jsonUnwrappedHandler(Function)`.
+</ParamField>
+
+<ParamField path="resolveAsRef" type="boolean">
+  When `true`, the resolver emits a `$ref` to a named component schema instead of inlining the schema. Fluent setter: `resolveAsRef(boolean)`.
+</ParamField>
+
+<ParamField path="resolveEnumAsRef" type="boolean">
+  When `true`, enum types are emitted as `$ref` references instead of being inlined. Fluent setter: `resolveEnumAsRef(boolean)`.
+</ParamField>
+
+<ParamField path="schemaProperty" type="boolean">
+  Set to `true` when the type is being resolved as a property of a parent schema rather than a top-level type. Fluent setter: `schemaProperty(boolean)`.
+</ParamField>
+
+<ParamField path="propertyName" type="String">
+  The property name when `schemaProperty` is `true`. Available since 2.0.4. Fluent setter: `propertyName(String)`.
+</ParamField>
+
+<ParamField path="jsonViewAnnotation" type="JsonView">
+  A `@JsonView` annotation to apply during resolution. Fluent setter: `jsonViewAnnotation(JsonView)`.
+</ParamField>
+
+<ParamField path="includePropertiesWithoutJSONView" type="boolean">
+  Whether to include properties that carry no `@JsonView` annotation when a view is active. Defaults to `true`. Fluent setter: `includePropertiesWithoutJSONView(boolean)`.
+</ParamField>
+
+<ParamField path="skipOverride" type="boolean">
+  Prevents `@Schema` annotation overrides from being applied. Fluent setter: `skipOverride(boolean)`.
+</ParamField>
+
+<ParamField path="skipSchemaName" type="boolean">
+  Suppresses automatic schema name generation. Fluent setter: `skipSchemaName(boolean)`.
+</ParamField>
+
+<ParamField path="skipJsonIdentity" type="boolean">
+  Suppresses `@JsonIdentityInfo` processing. Fluent setter: `skipJsonIdentity(boolean)`.
+</ParamField>
+
+<ParamField path="isSubtype" type="boolean">
+  Indicates the type is a polymorphic subtype. Fluent setter: `subtype(boolean)`.
+</ParamField>
+
+<ParamField path="components" type="Components">
+  An existing `Components` object to populate during resolution. Fluent setter: `components(Components)`.
+</ParamField>
+
+---
+
+## `ResolvedSchema`
+
+**Package:** `io.swagger.v3.core.converter`
+
+A simple container returned by `ModelConverters` methods that expose both the primary schema and all named schemas defined during resolution.
+
+```java
+public class ResolvedSchema {
+    public Schema schema;
+    public Map<String, Schema> referencedSchemas;
+}
+```
+
+<ParamField path="schema" type="Schema">
+  The primary schema produced for the requested type. May be a `$ref` schema when the type was resolved as a named component.
+</ParamField>
+
+<ParamField path="referencedSchemas" type="Map&lt;String, Schema&gt;">
+  All named schemas defined as a side-effect of resolving the primary type. These should be merged into `components/schemas` in the final OpenAPI document.
+</ParamField>
+
+---
+
+## `AbstractModelConverter`
+
+**Package:** `io.swagger.v3.core.jackson`
+
+A convenience base class for converter implementations that rely on Jackson for type introspection. Subclasses receive a pre-configured `ObjectMapper` and a `TypeNameResolver`, and inherit helpers for determining schema names.
+
+```java
+public abstract class AbstractModelConverter implements ModelConverter {
+
+    protected final ObjectMapper _mapper;
+    protected final TypeNameResolver _typeNameResolver;
+    protected Map<JavaType, String> _resolvedTypeNames = new ConcurrentHashMap<>();
+
+    protected AbstractModelConverter(ObjectMapper mapper) { ... }
+    protected AbstractModelConverter(ObjectMapper mapper, TypeNameResolver typeNameResolver) { ... }
+}
+```
+
+The default `resolve()` implementation simply delegates to `chain.next()`, so subclasses only need to handle the types they care about.
+
+### Protected helpers
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `_intr()` | `AnnotationIntrospector` | Returns the current `AnnotationIntrospector` from the mapper's serialization config. Not cached; reflects later-registered modules. |
+| `_typeName(JavaType)` | `String` | Returns a cached schema name for the Jackson type. |
+| `_typeName(JavaType, BeanDescription)` | `String` | Variant that accepts an already-introspected `BeanDescription`. |
+| `_typeQName(JavaType)` | `String` | Returns the fully-qualified class name. |
+| `_subTypeName(NamedType)` | `String` | Returns the class name for a polymorphic named type. |
+| `_isSetType(Class<?>)` | `boolean` | Returns `true` when the class is or implements `java.util.Set`. |
+
+---
+
+## `ModelConverters`
+
+**Package:** `io.swagger.v3.core.converter`
+
+The facade through which application code resolves Java types to schemas. Maintains a thread-safe list of `ModelConverter` instances and exposes managed singleton instances per OpenAPI version.
+
+### Constructors
+
+```java
+public ModelConverters()
+public ModelConverters(boolean openapi31)
+public ModelConverters(boolean openapi31, Schema.SchemaResolution schemaResolution)
+public ModelConverters(Configuration configuration)
+```
+
+### Singleton accessors
+
+```java
+public static ModelConverters getInstance()
+public static ModelConverters getInstance(boolean openapi31)
+public static ModelConverters getInstance(boolean openapi31, Schema.SchemaResolution schemaResolution)
+public static ModelConverters getInstance(Configuration configuration)
+public static void reset()
+```
+
+`getInstance()` is equivalent to `getInstance(false)`. Singletons are initialized lazily; `java.util.ServiceLoader` is used to discover additional `ModelConverter` implementations on the classpath. `java.lang` and `groovy.lang` packages are skipped by default.
+
+`reset()` clears both the OAS 3.0 and OAS 3.1 singletons, forcing re-initialization on the next call.
+
+### Converter management
+
+```java
+public void addConverter(ModelConverter converter)
+public void removeConverter(ModelConverter converter)
+public List<ModelConverter> getConverters()
+```
+
+`addConverter` **prepends** the converter so it runs before built-in converters.
+
+### Package and class skip lists
+
+```java
+public void addPackageToSkip(String pkg)
+public void addClassToSkip(String cls)
+public boolean isRegisteredAsSkippedClass(String className)
+public Set<String> getSkippedPackages()
+```
+
+### Type resolution methods
+
+```java
+public Map<String, Schema> read(Type type)
+public Map<String, Schema> read(AnnotatedType type)
+public Map<String, Schema> readAll(Type type)
+public Map<String, Schema> readAll(AnnotatedType type)
+public ResolvedSchema readAllAsResolvedSchema(Type type)
+public ResolvedSchema readAllAsResolvedSchema(AnnotatedType type)
+public ResolvedSchema resolveAsResolvedSchema(AnnotatedType type)
+```
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `read` | `Map<String, Schema>` | Returns only the entry whose value equals the resolved primary schema. |
+| `readAll` | `Map<String, Schema>` | Returns all named schemas defined during resolution. |
+| `readAllAsResolvedSchema` | `ResolvedSchema` | Returns a `ResolvedSchema` with both the primary schema and all referenced schemas. Returns `null` for skipped types. |
+| `resolveAsResolvedSchema` | `ResolvedSchema` | Like `readAllAsResolvedSchema` but skips the type-filter check. |
+
+---
+
+## Custom converter example
+
+```java
+import io.swagger.v3.core.converter.AnnotatedType;
+import io.swagger.v3.core.converter.ModelConverter;
+import io.swagger.v3.core.converter.ModelConverterContext;
+import io.swagger.v3.oas.models.media.Schema;
+import io.swagger.v3.oas.models.media.StringSchema;
+
+import java.util.Iterator;
+
+/**
+ * Converts any field annotated with @MoneyAmount to a string schema
+ * with format "money".
+ */
+public class MoneyAmountConverter implements ModelConverter {
+
+    @Override
+    public Schema resolve(AnnotatedType type, ModelConverterContext context, Iterator<ModelConverter> chain) {
+        if (type.getCtxAnnotations() != null) {
+            for (java.lang.annotation.Annotation a : type.getCtxAnnotations()) {
+                if (a.annotationType().equals(MoneyAmount.class)) {
+                    return new StringSchema().format("money");
+                }
+            }
+        }
+        // Delegate to the next converter in the chain
+        return chain.hasNext() ? chain.next().resolve(type, context, chain) : null;
+    }
+}
+```
+
+Register the converter programmatically:
+
+```java
+// Runs before built-in ModelResolver because addConverter() prepends
+ModelConverters.getInstance().addConverter(new MoneyAmountConverter());
+```
+
+Or declare it in `SwaggerConfiguration` so the integration layer registers it automatically:
+
+```java
+SwaggerConfiguration config = new SwaggerConfiguration()
+    .resourcePackages(Set.of("com.example.api"))
+    .modelConverterClasses(Set.of("com.example.MoneyAmountConverter"));
+```
+
+Or register via the Java SPI by creating a file at:
+
+```
+META-INF/services/io.swagger.v3.core.converter.ModelConverter
+```
+
+containing the fully-qualified class name of your implementation.

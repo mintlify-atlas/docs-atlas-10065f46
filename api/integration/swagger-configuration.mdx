@@ -1,0 +1,219 @@
+---
+title: "SwaggerConfiguration"
+description: "The primary configuration object for Swagger Core's integration layer. Controls resource scanning, reading, filtering, caching, serialization, and OpenAPI version behaviour."
+---
+
+**Full class path:** `io.swagger.v3.oas.integration.SwaggerConfiguration`
+
+`SwaggerConfiguration` implements `OpenAPIConfiguration` and is the standard way to provide runtime configuration to `GenericOpenApiContext` and its JAX-RS subclasses. Every setter returns `this` for fluent chaining.
+
+```java
+public class SwaggerConfiguration implements OpenAPIConfiguration { ... }
+```
+
+---
+
+## Fields
+
+### OpenAPI document seed
+
+<ParamField path="openAPI" type="OpenAPI">
+  An `OpenAPI` object used as the starting point for spec generation. The reader merges annotations on top of this object. Fluent setter: `openAPI(OpenAPI)`.
+</ParamField>
+
+### Context identity
+
+<ParamField path="id" type="String">
+  A unique identifier for the context. Used by `OpenApiContextLocator` to store and retrieve context instances. Fluent setter: `id(String)`.
+</ParamField>
+
+### Resource discovery
+
+<ParamField path="resourcePackages" type="Set&lt;String&gt;">
+  Package names to scan for annotated resource classes. The scanner restricts the classpath scan to these packages. Fluent setter: `resourcePackages(Set<String>)`.
+</ParamField>
+
+<ParamField path="resourceClasses" type="Set&lt;String&gt;">
+  Fully-qualified class names to read directly, bypassing the classpath scan. When set, `resourcePackages` is ignored by the default scanner. Fluent setter: `resourceClasses(Set<String>)`.
+</ParamField>
+
+<ParamField path="ignoredRoutes" type="Collection&lt;String&gt;">
+  Route paths to exclude from the generated spec. Fluent setter: `ignoredRoutes(Collection<String>)`.
+</ParamField>
+
+### Component class names
+
+<ParamField path="filterClass" type="String">
+  Fully-qualified class name of an `OpenAPISpecFilter` implementation. Instantiated and applied on each `read()` call. Fluent setter: `filterClass(String)`.
+</ParamField>
+
+<ParamField path="readerClass" type="String">
+  Fully-qualified class name of an `OpenApiReader` implementation. If blank, the default reader is used. Fluent setter: `readerClass(String)`.
+</ParamField>
+
+<ParamField path="scannerClass" type="String">
+  Fully-qualified class name of an `OpenApiScanner` implementation. If blank, `GenericOpenApiScanner` is used. Fluent setter: `scannerClass(String)`.
+</ParamField>
+
+<ParamField path="objectMapperProcessorClass" type="String">
+  Fully-qualified class name of an `ObjectMapperProcessor` implementation (since 2.0.6). Fluent setter: `objectMapperProcessorClass(String)`.
+</ParamField>
+
+<ParamField path="modelConverterClasses" type="Set&lt;String&gt;">
+  Fully-qualified class names of `ModelConverter` implementations to register (since 2.0.6). Registered before reading begins. Fluent setter: `modelConverterClasses(Set<String>)`.
+</ParamField>
+
+<ParamField path="validatorProcessorClass" type="String">
+  Fully-qualified class name of a `ValidatorProcessor` implementation (since 2.2.29). Fluent setter: `validatorProcessorClass(String)`.
+</ParamField>
+
+### Output behaviour
+
+<ParamField path="prettyPrint" type="Boolean">
+  When `true`, the spec endpoint produces pretty-printed JSON/YAML. Fluent setter: `prettyPrint(Boolean)`.
+</ParamField>
+
+<ParamField path="sortOutput" type="Boolean">
+  When `true`, map entries and schema properties are sorted alphabetically in the output (since 2.1.6). Fluent setter: `sortOutput(Boolean)`.
+</ParamField>
+
+<ParamField path="readAllResources" type="Boolean">
+  When `true` (the default), the reader processes all public methods even if they lack `@Operation`. Set to `false` to read only methods explicitly annotated with `@Operation`. Fluent setter: `readAllResources(Boolean)`.
+</ParamField>
+
+### Path resolution
+
+<ParamField path="alwaysResolveAppPath" type="Boolean">
+  When `true`, the application's context path is always prepended to operation paths (since 2.1.9). Fluent setter: `alwaysResolveAppPath(Boolean)`.
+</ParamField>
+
+<ParamField path="skipResolveAppPath" type="Boolean">
+  When `true`, the application's context path is never prepended to operation paths (since 2.1.15). Takes precedence over `alwaysResolveAppPath`. Fluent setter: `skipResolveAppPath(Boolean)`.
+</ParamField>
+
+### Caching
+
+<ParamField path="cacheTTL" type="Long">
+  Time-to-live for the cached `OpenAPI` object in milliseconds. `0` disables caching (the spec is recomputed on every request). `-1` (the default) caches indefinitely. Fluent setter: `cacheTTL(Long)`.
+</ParamField>
+
+### OpenAPI version
+
+<ParamField path="openAPI31" type="Boolean">
+  When `true`, the context uses OpenAPI 3.1 serializers, mixins, and schema resolution (since 2.1.9). Defaults to `false`. Fluent setter: `openAPI31(Boolean)`.
+</ParamField>
+
+<ParamField path="convertToOpenAPI31" type="Boolean">
+  When `true`, the output is converted from OpenAPI 3.0 to 3.1 using `SpecFilter` (since 2.2.12). Setting this to `true` also sets `openAPI31` to `true`. Fluent setter: `convertToOpenAPI31(Boolean)`.
+</ParamField>
+
+<ParamField path="openAPIVersion" type="String">
+  Explicit OpenAPI version string to embed in the document (since 2.2.28). Fluent setter: `openAPIVersion(String)`.
+</ParamField>
+
+### Schema resolution
+
+<ParamField path="schemaResolution" type="Schema.SchemaResolution">
+  Controls how the `ModelResolver` handles schema references. Defaults to `Schema.SchemaResolution.DEFAULT`. Fluent setter: `schemaResolution(Schema.SchemaResolution)`.
+</ParamField>
+
+### Response defaults
+
+<ParamField path="defaultResponseCode" type="String">
+  The default HTTP response code to use when generating responses from method return types (since 2.2.17). Fluent setter: `defaultResponseCode(String)`.
+</ParamField>
+
+### Validation
+
+<ParamField path="groupsValidationStrategy" type="Configuration.GroupsValidationStrategy">
+  Strategy for handling Bean Validation group annotations (since 2.2.29). Defaults to `GroupsValidationStrategy.DEFAULT`. Fluent setter: `groupsValidationStrategy(Configuration.GroupsValidationStrategy)`.
+</ParamField>
+
+---
+
+## Fluent builder pattern
+
+Every setter method returns `this`, so the entire configuration can be built in a single expression:
+
+```java
+import io.swagger.v3.oas.integration.SwaggerConfiguration;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Info;
+
+SwaggerConfiguration config = new SwaggerConfiguration()
+    .openAPI(new OpenAPI()
+        .info(new Info()
+            .title("Petstore API")
+            .version("1.0.0")))
+    .resourcePackages(Set.of("com.example.api"))
+    .prettyPrint(true)
+    .cacheTTL(0L)
+    .readAllResources(true)
+    .filterClass("com.example.InternalOperationFilter")
+    .modelConverterClasses(Set.of("com.example.MoneyAmountConverter"))
+    .sortOutput(true);
+```
+
+---
+
+## Configuration file format
+
+`GenericOpenApiContext` searches for configuration files at these classpath/filesystem locations (in order):
+
+1. `openapi-configuration.yaml`
+2. `openapi-configuration.json`
+3. `openapi.yaml`
+4. `openapi.json`
+
+The file is deserialized into a `SwaggerConfiguration`. Field names match the Java property names:
+
+```yaml
+# openapi-configuration.yaml
+resourcePackages:
+  - com.example.api
+prettyPrint: true
+cacheTTL: 0
+readAllResources: true
+filterClass: com.example.InternalOperationFilter
+modelConverterClasses:
+  - com.example.MoneyAmountConverter
+sortOutput: false
+openAPI31: false
+openAPI:
+  info:
+    title: Petstore API
+    version: 1.0.0
+  servers:
+    - url: https://api.example.com/v1
+```
+
+```json
+{
+  "resourcePackages": ["com.example.api"],
+  "prettyPrint": true,
+  "cacheTTL": 0,
+  "readAllResources": true,
+  "filterClass": "com.example.InternalOperationFilter",
+  "modelConverterClasses": ["com.example.MoneyAmountConverter"],
+  "sortOutput": false,
+  "openAPI31": false,
+  "openAPI": {
+    "info": {
+      "title": "Petstore API",
+      "version": "1.0.0"
+    }
+  }
+}
+```
+
+---
+
+## `toConfiguration()`
+
+Converts the `SwaggerConfiguration` to a `io.swagger.v3.core.util.Configuration` value object used internally by `ModelConverters` and `ModelResolver`.
+
+```java
+public Configuration toConfiguration()
+```
+
+The following fields are copied: `openAPI`, `userDefinedOptions`, `modelConverterClasses`, `objectMapperProcessorClass`, `openAPI31`, `schemaResolution`, `openAPIVersion`, `groupsValidationStrategy`, `validatorProcessorClass`.

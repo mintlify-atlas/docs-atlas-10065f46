@@ -1,0 +1,205 @@
+---
+title: "@ApiResponse"
+description: "Declares an HTTP response for an operation, including its status code, description, headers, content schema, and links."
+---
+
+`io.swagger.v3.oas.annotations.responses.ApiResponse`
+
+Annotate a method or class to describe one possible HTTP response that an operation can return. `@ApiResponse` is repeatable; use it multiple times on the same method or collect multiple responses with the `@ApiResponses` container.
+
+## Elements
+
+<ParamField path="responseCode" type="string" default='"default"'>
+  The HTTP status code for this response (e.g. `"200"`, `"404"`). Use `"default"` to describe the response for all status codes that are not individually listed. Only one `"default"` entry is allowed per operation.
+</ParamField>
+
+<ParamField path="description" type="string" default='""'>
+  A short, human-readable description of the response. Supports CommonMark markdown.
+</ParamField>
+
+<ParamField path="headers" type="Header[]" default="{}">
+  Response headers that accompany this response. Each entry is a `@Header` annotation describing the header name, schema, and description.
+</ParamField>
+
+<ParamField path="content" type="Content[]" default="{}">
+  Descriptions of the possible response payloads for different media types. Each entry is a `@Content` annotation that pairs a media type string with a `@Schema` or `@ArraySchema`.
+</ParamField>
+
+<ParamField path="links" type="Link[]" default="{}">
+  Operation links that can be followed from this response. Each entry is a `@Link` annotation describing how the response can transition to another operation.
+</ParamField>
+
+<ParamField path="extensions" type="Extension[]" default="{}">
+  Specification extensions (`x-*` fields) to add to this response object.
+</ParamField>
+
+<ParamField path="ref" type="string" default='""'>
+  A `$ref` pointer to a response defined in the `components/responses` section of the OpenAPI document. When set, all other elements are ignored.
+
+  _Added in swagger-annotations 2.0.3._
+</ParamField>
+
+<ParamField path="useReturnTypeSchema" type="boolean" default="false">
+  When `true`, the response schema is resolved from the method's declared return type rather than from an explicit `@Schema` annotation on the `@Content`. Useful when you want to reuse the return type model without repeating the schema reference.
+
+  _Added in swagger-annotations 2.2.0._
+</ParamField>
+
+## @ApiResponses container
+
+`io.swagger.v3.oas.annotations.responses.ApiResponses`
+
+The container annotation for repeating `@ApiResponse` on a single target. Use it when your Java version does not support implicit repeatable annotations, or to group responses with shared extensions.
+
+<ParamField path="value" type="ApiResponse[]" default="{}">
+  The array of `@ApiResponse` annotations held by this container.
+</ParamField>
+
+<ParamField path="extensions" type="Extension[]" default="{}">
+  Specification extensions (`x-*` fields) to add to the enclosing responses map.
+</ParamField>
+
+## Usage examples
+
+### Multiple response codes with typed schemas
+
+```java
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.MediaType;
+
+@Path("/pets/{petId}")
+public class PetResource {
+
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    @Operation(summary = "Find a pet by ID")
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description  = "Successful operation",
+            content      = @Content(
+                mediaType = MediaType.APPLICATION_JSON,
+                schema    = @Schema(implementation = Pet.class)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "400",
+            description  = "Invalid ID supplied",
+            content      = @Content(
+                mediaType = MediaType.APPLICATION_JSON,
+                schema    = @Schema(implementation = ErrorResponse.class)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description  = "Pet not found"
+        )
+    })
+    public Pet getPetById(@PathParam("petId") long petId) {
+        return petService.findById(petId);
+    }
+}
+```
+
+### Multiple content types
+
+```java
+@POST
+@Path("/pets")
+@Consumes({ MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML })
+@Produces({ MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML })
+@Operation(summary = "Create a pet")
+@ApiResponses({
+    @ApiResponse(
+        responseCode = "201",
+        description  = "Pet created",
+        content      = {
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON,
+                schema    = @Schema(implementation = Pet.class)
+            ),
+            @Content(
+                mediaType = MediaType.APPLICATION_XML,
+                schema    = @Schema(implementation = Pet.class)
+            )
+        }
+    ),
+    @ApiResponse(
+        responseCode = "422",
+        description  = "Validation failed",
+        content      = @Content(
+            mediaType = MediaType.APPLICATION_JSON,
+            schema    = @Schema(implementation = ValidationErrorResponse.class)
+        )
+    )
+})
+public Response createPet(Pet pet) {
+    Pet created = petService.create(pet);
+    return Response.status(Response.Status.CREATED).entity(created).build();
+}
+```
+
+### Using `useReturnTypeSchema`
+
+```java
+@GET
+@Path("/pets")
+@Produces(MediaType.APPLICATION_JSON)
+@Operation(summary = "List all pets")
+@ApiResponse(
+    responseCode       = "200",
+    description        = "A list of pets",
+    useReturnTypeSchema = true
+)
+public List<Pet> listPets() {
+    return petService.listAll();
+}
+```
+
+### Referencing a reusable response
+
+```java
+@DELETE
+@Path("/pets/{petId}")
+@Operation(summary = "Delete a pet")
+@ApiResponse(responseCode = "204", description = "Pet deleted")
+@ApiResponse(ref = "#/components/responses/UnauthorizedError")
+public void deletePet(@PathParam("petId") long petId) {
+    petService.delete(petId);
+}
+```
+
+### Response with headers
+
+```java
+import io.swagger.v3.oas.annotations.headers.Header;
+
+@POST
+@Path("/pets")
+@Operation(summary = "Create a pet")
+@ApiResponse(
+    responseCode = "201",
+    description  = "Pet created",
+    headers      = {
+        @Header(
+            name        = "Location",
+            description = "URL of the newly created pet",
+            schema      = @Schema(type = "string", format = "uri")
+        )
+    },
+    content = @Content(
+        mediaType = MediaType.APPLICATION_JSON,
+        schema    = @Schema(implementation = Pet.class)
+    )
+)
+public Response createPet(Pet pet) {
+    Pet created = petService.create(pet);
+    URI location = uriInfo.getAbsolutePathBuilder().path(String.valueOf(created.getId())).build();
+    return Response.created(location).entity(created).build();
+}
+```

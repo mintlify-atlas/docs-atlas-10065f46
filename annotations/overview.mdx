@@ -1,0 +1,121 @@
+---
+title: "Annotations overview"
+description: "A reference guide to all annotations in the io.swagger.v3.oas.annotations package, organized by category."
+---
+
+Swagger Core provides a set of Java annotations that map directly to the [OpenAPI Specification](https://github.com/OAI/OpenAPI-Specification/blob/3.0.4/versions/3.0.4.md) object model. You place these annotations on JAX-RS resource classes, methods, and parameters (or on plain model classes) and the Swagger reader engine resolves them into an OpenAPI document at runtime or build time.
+
+All annotations live under `io.swagger.v3.oas.annotations` or one of its sub-packages.
+
+## Annotation categories
+
+<CardGroup cols={2}>
+  <Card title="Operation annotations" icon="bolt" href="/annotations/operation-annotations">
+    Describe HTTP operations, parameters, request bodies, responses, tags, servers, and callbacks.
+  </Card>
+  <Card title="Schema annotations" icon="cube" href="/annotations/schema-annotations">
+    Describe the shape of request/response bodies, model classes, and individual properties.
+  </Card>
+  <Card title="Security annotations" icon="lock" href="/annotations/security-annotations">
+    Define security schemes and attach security requirements to operations or the whole API.
+  </Card>
+</CardGroup>
+
+## Full annotation reference
+
+### Operation and request/response
+
+| Annotation | Import | Purpose |
+|---|---|---|
+| `@Operation` | `io.swagger.v3.oas.annotations.Operation` | Marks a method as an OpenAPI operation and supplies its metadata. |
+| `@Parameter` | `io.swagger.v3.oas.annotations.Parameter` | Describes a single path, query, header, or cookie parameter. |
+| `@Parameters` | `io.swagger.v3.oas.annotations.Parameters` | Container for repeating `@Parameter` on the same element. |
+| `@RequestBody` | `io.swagger.v3.oas.annotations.parameters.RequestBody` | Describes the HTTP request body of an operation. |
+| `@ApiResponse` | `io.swagger.v3.oas.annotations.responses.ApiResponse` | Documents one possible HTTP response from an operation. |
+| `@ApiResponses` | `io.swagger.v3.oas.annotations.responses.ApiResponses` | Container for repeating `@ApiResponse` on the same element. |
+| `@Callback` | `io.swagger.v3.oas.annotations.callbacks.Callback` | Defines an out-of-band callback associated with an operation. |
+| `@Callbacks` | `io.swagger.v3.oas.annotations.callbacks.Callbacks` | Container for repeating `@Callback` on the same element. |
+| `@ExternalDocumentation` | `io.swagger.v3.oas.annotations.ExternalDocumentation` | Links to an external reference document. |
+| `@Hidden` | `io.swagger.v3.oas.annotations.Hidden` | Excludes a resource, method, or field from the generated spec. |
+
+### Schema and media
+
+| Annotation | Import | Purpose |
+|---|---|---|
+| `@Schema` | `io.swagger.v3.oas.annotations.media.Schema` | Describes a schema (type, format, constraints, polymorphism). |
+| `@ArraySchema` | `io.swagger.v3.oas.annotations.media.ArraySchema` | Describes an array-typed schema including item schema and cardinality. |
+| `@Content` | `io.swagger.v3.oas.annotations.media.Content` | Pairs a media type (e.g. `application/json`) with a schema. |
+| `@ExampleObject` | `io.swagger.v3.oas.annotations.media.ExampleObject` | Defines a named example for a parameter or content object. |
+| `@DiscriminatorMapping` | `io.swagger.v3.oas.annotations.media.DiscriminatorMapping` | Maps a discriminator property value to a concrete schema class. |
+| `@Extension` | `io.swagger.v3.oas.annotations.extensions.Extension` | Attaches an OpenAPI specification extension (`x-*`) to an object. |
+| `@ExtensionProperty` | `io.swagger.v3.oas.annotations.extensions.ExtensionProperty` | A single key/value pair inside an `@Extension`. |
+
+### Grouping and global definition
+
+| Annotation | Import | Purpose |
+|---|---|---|
+| `@Tag` | `io.swagger.v3.oas.annotations.tags.Tag` | Assigns one or more logical grouping tags to an operation or class. |
+| `@Tags` | `io.swagger.v3.oas.annotations.tags.Tags` | Container for repeating `@Tag` on the same element. |
+| `@Server` | `io.swagger.v3.oas.annotations.servers.Server` | Declares a server base URL for an operation, class, or the whole API. |
+| `@Servers` | `io.swagger.v3.oas.annotations.servers.Servers` | Container for repeating `@Server` on the same element. |
+| `@OpenAPIDefinition` | `io.swagger.v3.oas.annotations.OpenAPIDefinition` | Sets global API metadata: info, tags, servers, security, and externalDocs. |
+| `@Webhook` | `io.swagger.v3.oas.annotations.Webhook` | Defines an incoming webhook endpoint (OpenAPI 3.1). |
+| `@Webhooks` | `io.swagger.v3.oas.annotations.Webhooks` | Container for repeating `@Webhook` on the same element. |
+
+### Security
+
+| Annotation | Import | Purpose |
+|---|---|---|
+| `@SecurityScheme` | `io.swagger.v3.oas.annotations.security.SecurityScheme` | Registers a security scheme in the `components/securitySchemes` section. |
+| `@SecuritySchemes` | `io.swagger.v3.oas.annotations.security.SecuritySchemes` | Container for repeating `@SecurityScheme` on the same element. |
+| `@SecurityRequirement` | `io.swagger.v3.oas.annotations.security.SecurityRequirement` | References a registered scheme and the scopes required for an operation or globally. |
+
+## Quick-start example
+
+The following JAX-RS resource method shows `@Operation` and `@ApiResponse` used together:
+
+```java
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+
+import javax.ws.rs.GET;
+import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
+import javax.ws.rs.Produces;
+import javax.ws.rs.core.MediaType;
+
+@Path("/pets")
+public class PetResource {
+
+    @GET
+    @Path("/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Operation(
+        summary = "Find a pet by ID",
+        description = "Returns a single pet identified by its numeric ID.",
+        operationId = "getPetById"
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "Pet found",
+            content = @Content(
+                mediaType = MediaType.APPLICATION_JSON,
+                schema = @Schema(implementation = Pet.class)
+            )
+        ),
+        @ApiResponse(responseCode = "404", description = "Pet not found")
+    })
+    public Pet getPet(@PathParam("id") Long id) {
+        // ...
+    }
+}
+```
+
+<Note>
+Method-level annotations such as `@ApiResponse`, `@Parameter`, `@Tag`, and `@Server` always take
+precedence over the equivalent fields inside `@Operation` when both are present on the same method.
+</Note>
